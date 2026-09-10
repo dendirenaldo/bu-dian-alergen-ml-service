@@ -119,29 +119,35 @@ class ModelTuner:
             )
 
             ckpt_path = os.path.join(tempfile.gettempdir(), f"best_{model_name}_trial{trial}.keras")
-            cb = [
-                ReduceLROnPlateau(
-                    monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6
-                ),
-                ModelCheckpoint(ckpt_path, monitor="val_loss", save_best_only=True, verbose=0),
-            ]
-            h = m.fit(
-                X_train,
-                y_train,
-                validation_split=self.val_split,
-                epochs=tuning_epochs,
-                batch_size=batch_size,
-                callbacks=cb,
-                class_weight=self.class_weight,
-                verbose=0,
-            )
-            val_loss = min(h.history["val_loss"])
-            val_acc = max(h.history["val_accuracy"])
-            logger.info(f"  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}")
+            try:
+                cb = [
+                    ReduceLROnPlateau(
+                        monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6
+                    ),
+                    ModelCheckpoint(ckpt_path, monitor="val_loss", save_best_only=True, verbose=0),
+                ]
+                h = m.fit(
+                    X_train,
+                    y_train,
+                    validation_split=self.val_split,
+                    epochs=tuning_epochs,
+                    batch_size=batch_size,
+                    callbacks=cb,
+                    class_weight=self.class_weight,
+                    verbose=0,
+                )
+                val_loss = min(h.history["val_loss"])
+                val_acc = max(h.history["val_accuracy"])
+                logger.info(f"  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}")
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_params = params
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_params = params
+            finally:
+                try:
+                    os.remove(ckpt_path)
+                except OSError:
+                    pass
 
         logger.info(
             f"Best params for {model_name}: bs={best_params['batch_size']}, "
@@ -190,15 +196,22 @@ class ModelTuner:
             ),
         ]
 
-        final_model.fit(
-            X_train,
-            y_train,
-            validation_split=self.val_split,
-            epochs=max_epochs,
-            batch_size=best_params["batch_size"],
-            callbacks=callbacks,
-            class_weight=self.class_weight,
-            verbose=1,
-        )
+        final_ckpt = os.path.join(tempfile.gettempdir(), f"best_{model_name}_final.keras")
+        try:
+            final_model.fit(
+                X_train,
+                y_train,
+                validation_split=self.val_split,
+                epochs=max_epochs,
+                batch_size=best_params["batch_size"],
+                callbacks=callbacks,
+                class_weight=self.class_weight,
+                verbose=1,
+            )
+        finally:
+            try:
+                os.remove(final_ckpt)
+            except OSError:
+                pass
 
         return final_model, best_params

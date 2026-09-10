@@ -53,6 +53,7 @@ class TrainingService:
         self._status = TrainingStatus()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self._cancel_event = threading.Event()
 
     @property
     def status(self) -> TrainingStatus:
@@ -80,12 +81,20 @@ class TrainingService:
                 raise RuntimeError("Training already in progress")
             self._status = TrainingStatus(status="training", started_at=time.time())
 
+        self._cancel_event.clear()
         self._thread = threading.Thread(
             target=self._train,
             args=(data_path, text_col, label_col),
             daemon=True,
         )
         self._thread.start()
+
+    def cancel_training(self) -> None:
+        """Request cancellation of the current training run."""
+        with self._lock:
+            if self._status.status == "training":
+                self._cancel_event.set()
+                self._status.message = "Cancellation requested"
 
     def _train(self, data_path: str, text_col: str, label_col: str) -> None:
         """Internal training routine."""
@@ -183,6 +192,14 @@ class TrainingService:
                 verbose=1,
             )
 
+            if self._cancel_event.is_set():
+                with self._lock:
+                    self._status.status = "cancelled"
+                    self._status.message = "Training cancelled"
+                    self._status.finished_at = time.time()
+                logger.info("Training cancelled by user")
+                return
+
             with self._lock:
                 self._status.progress = 0.8
                 self._status.message = "Saving models"
@@ -217,5 +234,5 @@ class TrainingService:
             with self._lock:
                 self._status.status = "failed"
                 self._status.error = str(e)
-                self._status.message = f"Training failed: {e}"
+                self._status.message = "Training failed"
                 self._status.finished_at = time.time()

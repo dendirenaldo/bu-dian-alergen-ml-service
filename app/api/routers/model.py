@@ -1,9 +1,10 @@
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_model_registry
+from app.api.deps import get_api_key, get_model_registry
 from app.config import settings
 from app.schemas.model import ModelStatusResponse, TrainingStartRequest, TrainingStatusResponse
 from app.services.model_registry import ModelRegistry
@@ -23,8 +24,25 @@ def _get_training_service(registry: ModelRegistry) -> TrainingService:
     return _training_service
 
 
+def _validate_data_path(data_path: str) -> str:
+    """Validate and resolve data_path to prevent path traversal."""
+    abs_path = os.path.abspath(data_path)
+    allowed_dirs = [os.path.abspath(d) for d in settings.ALLOWED_DATA_DIRS.split(",")]
+    if not any(abs_path.startswith(d) for d in allowed_dirs):
+        raise HTTPException(
+            status_code=403,
+            detail="Data path is outside allowed directories",
+        )
+    if ".." in data_path:
+        raise HTTPException(status_code=400, detail="Path must not contain '..'")
+    return abs_path
+
+
 @router.get("/model/status", response_model=ModelStatusResponse)
-async def model_status(registry: ModelRegistry = Depends(get_model_registry)):
+async def model_status(
+    registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
+):
     return ModelStatusResponse(
         loaded=registry.is_loaded,
         model_dir=settings.MODEL_DIR,
@@ -32,7 +50,10 @@ async def model_status(registry: ModelRegistry = Depends(get_model_registry)):
 
 
 @router.get("/model/metrics")
-async def model_metrics(registry: ModelRegistry = Depends(get_model_registry)):
+async def model_metrics(
+    registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
+):
     return {
         "loaded": registry.is_loaded,
         "has_bi_lstm": registry.bi_lstm_model is not None,
@@ -46,7 +67,9 @@ async def model_metrics(registry: ModelRegistry = Depends(get_model_registry)):
 async def start_training(
     request: TrainingStartRequest,
     registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
 ):
+    _validate_data_path(request.data_path)
     service = _get_training_service(registry)
 
     try:
@@ -78,6 +101,7 @@ async def start_training(
 @router.get("/model/train/status", response_model=TrainingStatusResponse)
 async def training_status(
     registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
 ):
     service = _get_training_service(registry)
     status = service.status

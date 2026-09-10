@@ -39,7 +39,7 @@ async def pipeline_error_handler(request: Request, exc: PipelineError):
     logger.error(f"Pipeline error: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Detection pipeline error: {exc}", "code": "pipeline_error"},
+        content={"detail": "Detection pipeline error", "code": "pipeline_error"},
     )
 
 

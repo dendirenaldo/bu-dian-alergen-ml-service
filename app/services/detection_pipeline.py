@@ -6,6 +6,7 @@ from typing import List, Optional
 import numpy as np
 import tensorflow as tf
 
+from app.config import settings
 from app.core.preprocessing.image import ImagePreprocessor
 from app.core.preprocessing.text import TextPreprocessor
 from app.core.ocr.composition import CompositionParser
@@ -13,6 +14,21 @@ from app.core.ocr.engine import OCREngine
 from app.services.model_registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
+
+KNOWN_ALLERGENS = {
+    "gluten": ["wheat", "barley", "rye", "oats", "gluten", "semolina", "spelt"],
+    "dairy": ["milk", "cheese", "butter", "cream", "yogurt", "lactose", "casein", "whey"],
+    "egg": ["egg", "albumin", "lysozyme"],
+    "soy": ["soy", "soya", "lecithin"],
+    "peanut": ["peanut"],
+    "tree_nut": ["almond", "cashew", "walnut", "hazelnut", "pecan", "pistachio", "macadamia"],
+    "fish": ["fish", "anchovy", "cod", "bass", "salmon", "tilapia", "tuna"],
+    "shellfish": ["shrimp", "crab", "lobster", "mussel", "clam", "oyster", "squid"],
+    "sesame": ["sesame", "tahini"],
+    "celery": ["celery"],
+    "mustard": ["mustard"],
+    "sulfite": ["sulfite", "sulphite", "sodium sulfite"],
+}
 
 
 @dataclass
@@ -39,21 +55,6 @@ class DetectionPipeline:
         self.registry = registry
 
     def detect_from_image(self, image_bytes: bytes) -> DetectionResult:
-        """Run full detection pipeline on an image.
-
-        Preprocesses the image, extracts text via OCR, parses composition,
-        and classifies using the BiLSTM model.
-
-        Args:
-            image_bytes: Raw image bytes.
-
-        Returns:
-            DetectionResult with classification and metadata.
-
-        Raises:
-            RuntimeError: If models are not loaded.
-            ValueError: If image cannot be decoded.
-        """
         start = time.time()
 
         img_prep = ImagePreprocessor()
@@ -69,6 +70,7 @@ class DetectionPipeline:
             composition = ocr.extract_text(processed_img)
 
         result, confidence = self._classify_text(composition)
+        allergens = self._identify_allergens(composition) if result == "unsafe" else []
 
         elapsed = int((time.time() - start) * 1000)
 
@@ -76,26 +78,16 @@ class DetectionPipeline:
             result=result,
             confidence_score=confidence,
             ocr_text=composition,
-            allergens=[],
+            allergens=allergens,
             processing_time_ms=elapsed,
             detection_method="image_ocr",
         )
 
     def detect_from_text(self, text: str) -> DetectionResult:
-        """Classify raw text for allergen presence.
-
-        Args:
-            text: Ingredient/composition text.
-
-        Returns:
-            DetectionResult with classification and metadata.
-
-        Raises:
-            RuntimeError: If models are not loaded.
-        """
         start = time.time()
 
         result, confidence = self._classify_text(text)
+        allergens = self._identify_allergens(text) if result == "unsafe" else []
 
         elapsed = int((time.time() - start) * 1000)
 
@@ -103,23 +95,12 @@ class DetectionPipeline:
             result=result,
             confidence_score=confidence,
             ocr_text=text,
-            allergens=[],
+            allergens=allergens,
             processing_time_ms=elapsed,
             detection_method="text_input",
         )
 
     def _classify_text(self, text: str) -> "tuple[str, float]":
-        """Run BiLSTM classification on text.
-
-        Args:
-            text: Preprocessed text to classify.
-
-        Returns:
-            Tuple of (label, confidence).
-
-        Raises:
-            RuntimeError: If models are not loaded.
-        """
         if not self.registry.is_loaded:
             raise RuntimeError("Models not loaded")
 
@@ -128,7 +109,7 @@ class DetectionPipeline:
         cleaned = " ".join(tokens)
 
         tokenizer = self.registry.tokenizer
-        pad_len = 120
+        pad_len = settings.MAX_LEN
 
         seq = tokenizer.texts_to_sequences([cleaned])
         pad = tf.keras.preprocessing.sequence.pad_sequences(
@@ -142,3 +123,17 @@ class DetectionPipeline:
         confidence = score if score >= 0.5 else 1 - score
 
         return label, confidence
+
+    def _identify_allergens(self, text: str) -> List[AllergenResult]:
+        text_lower = text.lower()
+        found = []
+        for allergen_name, keywords in KNOWN_ALLERGENS.items():
+            for kw in keywords:
+                if kw in text_lower:
+                    found.append(AllergenResult(
+                        name=allergen_name,
+                        confidence=1.0,
+                        severity="high",
+                    ))
+                    break
+        return found

@@ -3,20 +3,23 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from app.api.deps import get_model_registry
+from app.api.deps import get_api_key, get_model_registry
 from app.schemas.detection import DetectionResponse, TextDetectionRequest
 from app.services.detection_pipeline import DetectionPipeline
 from app.services.model_registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
 router = APIRouter()
 
 
-@router.post("/detect/upload", response_model=DetectionResponse)
+@router.post("/detection/upload", response_model=DetectionResponse)
 async def upload_image(
     file: UploadFile = File(...),
     registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
 ):
     if not registry.is_loaded:
         raise HTTPException(status_code=503, detail="Models not loaded")
@@ -28,12 +31,15 @@ async def upload_image(
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    if len(image_bytes) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large, max 10MB")
+
     try:
         pipeline = DetectionPipeline(registry)
         result = pipeline.detect_from_image(image_bytes)
     except Exception as e:
         logger.error(f"Detection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Detection failed: {e}")
+        raise HTTPException(status_code=500, detail="Detection failed")
 
     return DetectionResponse(
         result=result.result,
@@ -45,10 +51,11 @@ async def upload_image(
     )
 
 
-@router.post("/detect/text", response_model=DetectionResponse)
+@router.post("/detection/text", response_model=DetectionResponse)
 async def classify_text(
     request: TextDetectionRequest,
     registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
 ):
     if not registry.is_loaded:
         raise HTTPException(status_code=503, detail="Models not loaded")
@@ -61,7 +68,7 @@ async def classify_text(
         result = pipeline.detect_from_text(request.text)
     except Exception as e:
         logger.error(f"Classification failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Classification failed: {e}")
+        raise HTTPException(status_code=500, detail="Classification failed")
 
     return DetectionResponse(
         result=result.result,
@@ -73,6 +80,6 @@ async def classify_text(
     )
 
 
-@router.get("/detect/{detection_id}")
+@router.get("/detection/{detection_id}")
 async def get_detection_result(detection_id: str):
     raise HTTPException(status_code=501, detail="Result storage not implemented")

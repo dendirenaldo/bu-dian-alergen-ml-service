@@ -8,34 +8,57 @@ __pycache__/
 venv/
 .venv/
 env/
+ENV/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+*.egg
 
 # Environment
 .env
 .env.local
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Models (large files, use DVC or cloud storage)
-models/*.keras
-models/*.model
-models/*.pkl
-models/*.h5
-
-# Logs
-*.log
-
 # Jupyter
 .ipynb_checkpoints/
 
-# Pytest
+# Testing
 .pytest_cache/
-.coverage
 htmlcov/
+.coverage
+.coverage.*
+
+# Type checking
+.mypy_cache/
+.pytype/
+
+# Model files (large, should be stored in LFS or external storage)
+models/*.keras
+models/*.h5
+models/*.pkl
+models/*.model
+models/*.bin
+models/*.npy
+
+# OCR output (generated, not source)
+ocr_output/
+
+# Dataset images (large files)
+dataset/*.jpg
+dataset/*.jpeg
+dataset/*.png
+
+# Logs
+*.log

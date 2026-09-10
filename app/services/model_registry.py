@@ -33,6 +33,10 @@ class ModelRegistry:
         Args:
             model_dir: Directory containing saved model files.
         """
+        with self._lock:
+            self._load_models_internal(model_dir)
+
+    def _load_models_internal(self, model_dir: str) -> None:
         try:
             model_path = os.path.join(model_dir, "bilstm_model.keras")
             w2v_path = os.path.join(model_dir, "word2vec.model")
@@ -69,6 +73,10 @@ class ModelRegistry:
         Args:
             model_dir: Directory to save model files.
         """
+        with self._lock:
+            self._save_models_internal(model_dir)
+
+    def _save_models_internal(self, model_dir: str) -> None:
         os.makedirs(model_dir, exist_ok=True)
 
         if self._bi_lstm_model:

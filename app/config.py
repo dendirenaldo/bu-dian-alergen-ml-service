@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     LEARNING_RATE: float = 1e-4
     TEST_SIZE: float = 0.2
     NESTJS_API_URL: str = "http://localhost:3001"
-    API_KEY: str = ""
+    ML_API_KEY: str = ""
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    ALLOWED_DATA_DIRS: str = "./data"
     MIN_WORD_COUNT: int = 3
     W2V_WINDOW: int = 5
     W2V_EPOCHS: int = 30
