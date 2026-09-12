@@ -28,7 +28,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     registry = ModelRegistry()
-    registry.load_models(settings.MODEL_DIR)
+    try:
+        registry.load_models(settings.MODEL_DIR)
+    except Exception as e:
+        logger.error(f"Gagal load model saat startup: {e}")
+    if not registry.is_loaded:
+        logger.warning(
+            f"ML model belum lengkap di {settings.MODEL_DIR}. "
+            "Service tetap jalan (health OK), tapi /detection akan 503."
+        )
     yield
 
 

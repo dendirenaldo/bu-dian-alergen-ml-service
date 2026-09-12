@@ -9,10 +9,14 @@ def get_model_registry() -> ModelRegistry:
     return ModelRegistry()
 
 
-async def get_api_key(x_api_key: str = Header(...)) -> str:
-    """Validate API key from request header."""
+async def get_api_key(x_api_key: str | None = Header(default=None)) -> str | None:
+    """Validate API key from request header.
+
+    Jika ML_API_KEY kosong (dev), header boleh absen.
+    Jika ML_API_KEY diset, header wajib cocok.
+    """
     if not settings.ML_API_KEY:
         return x_api_key
-    if x_api_key != settings.ML_API_KEY:
+    if not x_api_key or x_api_key != settings.ML_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return x_api_key

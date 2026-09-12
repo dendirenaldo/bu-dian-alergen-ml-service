@@ -61,8 +61,18 @@ class ModelRegistry:
                     self._label_encoder = pickle.load(f)
                 logger.info("Label encoder loaded")
 
-            self._loaded = True
-            logger.info(f"All models loaded from {model_dir}")
+            # _loaded True hanya jika artefak kritis tersedia (hindari None.predict).
+            has_core = self._bi_lstm_model is not None and self._tokenizer is not None
+            self._loaded = bool(has_core)
+            if has_core:
+                logger.info(f"All models loaded from {model_dir}")
+            else:
+                logger.warning(
+                    f"Model tidak lengkap di {model_dir} "
+                    f"(bilstm={self._bi_lstm_model is not None}, "
+                    f"tokenizer={self._tokenizer is not None}). "
+                    "Endpoint /detection akan 503 sampai model lengkap."
+                )
         except Exception as e:
             logger.error(f"Error loading models: {e}")
             self._loaded = False
@@ -94,7 +104,13 @@ class ModelRegistry:
 
     @property
     def is_loaded(self) -> bool:
-        return self._loaded
+        with self._lock:
+            return self._loaded and self._bi_lstm_model is not None and self._tokenizer is not None
+
+    def snapshot(self):
+        """Ambil (model, tokenizer) secara atomik untuk hindari TOCTOU reload."""
+        with self._lock:
+            return self._bi_lstm_model, self._tokenizer, self._label_encoder, self._loaded
 
     @property
     def bi_lstm_model(self):

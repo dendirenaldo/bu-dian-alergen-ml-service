@@ -17,26 +17,50 @@ router = APIRouter()
 
 @router.post("/detection/upload", response_model=DetectionResponse)
 async def upload_image(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    # Alias kompatibilitas: backend lama mengirim field 'image'.
+    image: UploadFile | None = File(default=None),
     registry: ModelRegistry = Depends(get_model_registry),
-    _api_key: str = Depends(get_api_key),
+    _api_key: str | None = Depends(get_api_key),
 ):
     if not registry.is_loaded:
         raise HTTPException(status_code=503, detail="Models not loaded")
 
-    if not file.content_type or not file.content_type.startswith("image/"):
+    upload = file or image
+    if upload is None:
+        raise HTTPException(status_code=422, detail="Field 'file' (atau 'image') wajib diisi")
+
+    if not upload.content_type or not upload.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
-    image_bytes = await file.read()
+    image_bytes = await upload.read()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
     if len(image_bytes) > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=413, detail="File too large, max 10MB")
 
+    # Validasi magic-byte: pastikan benar-benar image (bukan sekadar content-type).
+    try:
+        import cv2
+        import numpy as np
+
+        arr = np.frombuffer(image_bytes, dtype=np.uint8)
+        decoded = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if decoded is None:
+            raise HTTPException(status_code=400, detail="File gambar rusak/tidak valid")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     try:
         pipeline = DetectionPipeline(registry)
         result = pipeline.detect_from_image(image_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Input tidak valid")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e) or "Models not loaded")
     except Exception as e:
         logger.error(f"Detection failed: {e}")
         raise HTTPException(status_code=500, detail="Detection failed")
@@ -66,6 +90,10 @@ async def classify_text(
     try:
         pipeline = DetectionPipeline(registry)
         result = pipeline.detect_from_text(request.text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Input tidak valid")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e) or "Models not loaded")
     except Exception as e:
         logger.error(f"Classification failed: {e}")
         raise HTTPException(status_code=500, detail="Classification failed")

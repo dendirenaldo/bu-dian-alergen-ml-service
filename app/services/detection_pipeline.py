@@ -60,7 +60,7 @@ class DetectionPipeline:
         img_prep = ImagePreprocessor()
         processed_img = img_prep.preprocess_from_bytes(image_bytes)
 
-        ocr = OCREngine()
+        ocr = OCREngine(lang=settings.TESSERACT_LANG, min_conf=settings.OCR_MIN_CONF)
         lines = ocr.extract_lines(processed_img)
 
         parser = CompositionParser()
@@ -101,26 +101,43 @@ class DetectionPipeline:
         )
 
     def _classify_text(self, text: str) -> "tuple[str, float]":
-        if not self.registry.is_loaded:
+        model, tokenizer, label_encoder, loaded = self.registry.snapshot()
+        if not loaded or model is None or tokenizer is None:
             raise RuntimeError("Models not loaded")
 
         preprocessor = TextPreprocessor()
         tokens = preprocessor.preprocess(text)
         cleaned = " ".join(tokens)
+        if not cleaned.strip():
+            raise ValueError("Teks kosong setelah preprocessing")
 
-        tokenizer = self.registry.tokenizer
         pad_len = settings.MAX_LEN
 
         seq = tokenizer.texts_to_sequences([cleaned])
         pad = tf.keras.preprocessing.sequence.pad_sequences(
-            seq, maxlen=pad_len, padding="post"
+            seq, maxlen=pad_len, padding="post", truncating="post"
         )
 
         pred = self.registry.bi_lstm_model.predict(pad, verbose=0)
         score = float(pred[0][0])
 
-        label = "unsafe" if score >= 0.5 else "safe"
-        confidence = score if score >= 0.5 else 1 - score
+        # Gunakan label_encoder bila tersedia agar mapping tidak brittle.
+        # Fallback alfabetis lama: index 1 = unsafe.
+        unsafe_idx = 0
+        try:
+            if label_encoder is not None and hasattr(label_encoder, "classes_"):
+                classes = list(label_encoder.classes_)
+                unsafe_idx = classes.index("unsafe") if "unsafe" in classes else 0
+        except Exception:
+            unsafe_idx = 0
+
+        if pred.shape[-1] > 1:
+            score = float(pred[0][unsafe_idx])
+            label = "unsafe" if int(pred.argmax(axis=-1)[0]) == unsafe_idx else "safe"
+            confidence = score if label == "unsafe" else 1 - score
+        else:
+            label = "unsafe" if score >= 0.5 else "safe"
+            confidence = score if score >= 0.5 else 1 - score
 
         return label, confidence
 
