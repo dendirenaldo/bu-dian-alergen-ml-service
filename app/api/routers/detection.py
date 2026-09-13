@@ -1,7 +1,7 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from app.api.deps import get_api_key, get_model_registry
 from app.schemas.detection import DetectionResponse, TextDetectionRequest
@@ -14,17 +14,31 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 router = APIRouter()
 
+ModelChoice = Literal["bilstm", "bert", "ensemble"]
+
+
+def _check_ready(registry: ModelRegistry, model: str) -> None:
+    if model == "bert" and not registry.is_ready("bert"):
+        raise HTTPException(status_code=503, detail="Model BERT belum dimuat")
+    if model == "ensemble" and not registry.is_ready("ensemble"):
+        raise HTTPException(
+            status_code=503,
+            detail="Ensemble butuh BiLSTM+BERT; salah satu belum dimuat",
+        )
+    if not registry.is_loaded:
+        raise HTTPException(status_code=503, detail="Models not loaded")
+
 
 @router.post("/detection/upload", response_model=DetectionResponse)
 async def upload_image(
     file: UploadFile | None = File(default=None),
     # Alias kompatibilitas: backend lama mengirim field 'image'.
     image: UploadFile | None = File(default=None),
+    model: ModelChoice = Query(default="bilstm", description="Model: bilstm|bert|ensemble"),
     registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str | None = Depends(get_api_key),
 ):
-    if not registry.is_loaded:
-        raise HTTPException(status_code=503, detail="Models not loaded")
+    _check_ready(registry, model)
 
     upload = file or image
     if upload is None:
@@ -56,7 +70,7 @@ async def upload_image(
 
     try:
         pipeline = DetectionPipeline(registry)
-        result = pipeline.detect_from_image(image_bytes)
+        result = pipeline.detect_from_image(image_bytes, model=model)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e) or "Input tidak valid")
     except RuntimeError as e:
@@ -72,24 +86,27 @@ async def upload_image(
         allergens=result.allergens,
         processing_time_ms=result.processing_time_ms,
         detection_method=result.detection_method,
+        model_name=result.model_name,
+        model_version=result.model_version,
+        scores=result.scores,
     )
 
 
 @router.post("/detection/text", response_model=DetectionResponse)
 async def classify_text(
     request: TextDetectionRequest,
+    model: ModelChoice = Query(default="bilstm", description="Model: bilstm|bert|ensemble"),
     registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str = Depends(get_api_key),
 ):
-    if not registry.is_loaded:
-        raise HTTPException(status_code=503, detail="Models not loaded")
+    _check_ready(registry, model)
 
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     try:
         pipeline = DetectionPipeline(registry)
-        result = pipeline.detect_from_text(request.text)
+        result = pipeline.detect_from_text(request.text, model=model)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e) or "Input tidak valid")
     except RuntimeError as e:
@@ -105,6 +122,9 @@ async def classify_text(
         allergens=result.allergens,
         processing_time_ms=result.processing_time_ms,
         detection_method=result.detection_method,
+        model_name=result.model_name,
+        model_version=result.model_version,
+        scores=result.scores,
     )
 
 

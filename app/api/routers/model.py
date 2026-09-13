@@ -28,13 +28,14 @@ def _validate_data_path(data_path: str) -> str:
     """Validate and resolve data_path to prevent path traversal."""
     abs_path = os.path.abspath(data_path)
     allowed_dirs = [os.path.abspath(d) for d in settings.ALLOWED_DATA_DIRS.split(",")]
-    if not any(abs_path.startswith(d) for d in allowed_dirs):
+    # FIX: commonpath (bukan startswith) agar /data_evil tidak lolos untuk /data.
+    if not any(
+        os.path.commonpath([abs_path, d]) == d for d in allowed_dirs
+    ):
         raise HTTPException(
             status_code=403,
             detail="Data path is outside allowed directories",
         )
-    if ".." in data_path:
-        raise HTTPException(status_code=400, detail="Path must not contain '..'")
     return abs_path
 
 
@@ -43,10 +44,40 @@ async def model_status(
     registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str = Depends(get_api_key),
 ):
+    bert_ok = registry.is_ready("bert")
     return ModelStatusResponse(
         loaded=registry.is_loaded,
         model_dir=settings.MODEL_DIR,
+        models=[
+            {"name": "bilstm", "loaded": registry.is_loaded,
+             "version": (registry.metadata or {}).get("git_sha", "")},
+            {"name": "bert", "loaded": bert_ok,
+             "version": (registry.bert_snapshot()[3] or "")},
+        ],
     )
+
+
+@router.get("/model/list")
+async def model_list(
+    registry: ModelRegistry = Depends(get_model_registry),
+    _api_key: str = Depends(get_api_key),
+):
+    """Daftar model dual-model + kesiapan ensemble."""
+    _, _, _, bert_name = registry.bert_snapshot()
+    return {
+        "models": [
+            {"name": "bilstm", "loaded": registry.is_loaded, "type": "word2vec-bilstm"},
+            {"name": "bert", "loaded": registry.is_ready("bert"),
+             "type": bert_name or settings.BERT_MODEL_NAME},
+            {"name": "ensemble", "loaded": registry.is_ready("ensemble"),
+             "type": f"ensemble({settings.ENSEMBLE_STRATEGY})"},
+        ],
+        "default_model": settings.DEFAULT_MODEL,
+        "thresholds": {
+            "bilstm": registry.get_threshold("bilstm", settings.DEFAULT_THRESHOLD),
+            "bert": registry.get_threshold("bert", settings.BERT_THRESHOLD),
+        },
+    }
 
 
 @router.get("/model/metrics")
@@ -60,6 +91,12 @@ async def model_metrics(
         "has_word2vec": registry.word2vec_model is not None,
         "has_tokenizer": registry.tokenizer is not None,
         "has_label_encoder": registry.label_encoder is not None,
+        "has_bert": registry.is_ready("bert"),
+        "has_ensemble": registry.is_ready("ensemble"),
+        "thresholds": {
+            "bilstm": registry.get_threshold("bilstm", settings.DEFAULT_THRESHOLD),
+            "bert": registry.get_threshold("bert", settings.BERT_THRESHOLD),
+        },
     }
 
 

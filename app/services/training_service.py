@@ -100,13 +100,17 @@ class TrainingService:
         """Internal training routine."""
         try:
             logger.info(f"Loading training data from {data_path}")
-            df = pd.read_csv(data_path)
+            df = pd.read_csv(data_path, delimiter=getattr(settings, "CSV_DELIMITER", ";"))
             df = df[[text_col, label_col]].copy()
             df[text_col] = df[text_col].fillna("").astype(str)
             df[label_col] = df[label_col].fillna("").astype(str).str.strip().str.lower()
             df = df[df[text_col].str.strip() != ""].copy()
             df = df[df[label_col].isin(["safe", "unsafe"])].copy()
             df = df.drop_duplicates(subset=[text_col]).reset_index(drop=True)
+            if df.empty:
+                raise ValueError("Dataset kosong setelah filtering.")
+            if df[label_col].nunique() < 2:
+                raise ValueError("Dataset hanya 1 kelas — training dibatalkan.")
 
             with self._lock:
                 self._status.message = f"Loaded {len(df)} samples"
@@ -123,12 +127,22 @@ class TrainingService:
             )
 
             preprocessor = TextPreprocessor()
+            # FIX (CRITICAL train-serve skew + leakage): fit HANYA di train dan
+            # di teks HASIL preprocess (sama seperti serving), bukan teks mentah
+            # train+test. W2V tetap di token sederhana train-only.
+            X_train_clean = [preprocessor.preprocess_full(t) for t in X_train_text]
+            X_train_clean = [t for t in X_train_clean if t.strip()]
+            if not X_train_clean:
+                raise ValueError("Teks kosong setelah preprocessing.")
             tokenizer = Tokenizer(num_words=settings.VOCAB_SIZE, oov_token="<OOV>")
-            all_texts = X_train_text + X_test_text
-            tokenizer.fit_on_texts(all_texts)
+            tokenizer.fit_on_texts(X_train_clean)
 
-            X_train_seq = tokenizer.texts_to_sequences(X_train_text)
-            X_test_seq = tokenizer.texts_to_sequences(X_test_text)
+            X_train_seq = tokenizer.texts_to_sequences(X_train_clean)
+            X_test_clean = [preprocessor.preprocess_full(t) for t in X_test_text]
+            X_test_seq = tokenizer.texts_to_sequences(X_test_clean)
+            # OOV guard: cap indeks >= vocab ke 1.
+            X_train_seq = [[i if i < settings.VOCAB_SIZE else 1 for i in s] for s in X_train_seq]
+            X_test_seq = [[i if i < settings.VOCAB_SIZE else 1 for i in s] for s in X_test_seq]
             X_train_pad = pad_sequences(
                 X_train_seq, maxlen=settings.MAX_LEN, padding="post", truncating="post"
             )
@@ -169,8 +183,10 @@ class TrainingService:
             callbacks = [
                 EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True),
                 ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6),
+                # FIX: checkpoint ke file temp agar training gagal tidak merusak
+                # model produksi di MODEL_DIR.
                 ModelCheckpoint(
-                    os.path.join(settings.MODEL_DIR, "bilstm_model.keras"),
+                    os.path.join("/tmp", "bilstm_train_best.keras"),
                     monitor="val_loss",
                     save_best_only=True,
                     verbose=0,

@@ -34,7 +34,7 @@ class Word2VecEmbedding:
             vector_size=self.vector_size,
             window=self.window,
             min_count=self.min_count,
-            workers=4,
+            workers=1,  # FIX: deterministik (dulu 4, non-reproduksibel).
             sg=1,
             epochs=self.epochs,
             seed=42,
@@ -60,8 +60,9 @@ class Word2VecEmbedding:
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
 
-        embedding_matrix = np.random.normal(
-            scale=0.6, size=(vocab_size, self.vector_size)
+        rng = np.random.RandomState(42)
+        embedding_matrix = rng.normal(
+            scale=0.1, size=(vocab_size, self.vector_size)
         ).astype(np.float32)
         embedding_matrix[0] = np.zeros((self.vector_size,), dtype=np.float32)
 

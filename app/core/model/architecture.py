@@ -56,6 +56,7 @@ def build_model(
             output_dim=embed_dim,
             weights=[embedding_matrix],
             trainable=embed_trainable,
+            mask_zero=True,  # FIX: PAD id=0 di-mask (konsisten dengan training).
         )
     )
 

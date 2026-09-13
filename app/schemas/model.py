@@ -21,6 +21,13 @@ class TrainingStatusResponse(BaseModel):
 class ModelStatusResponse(BaseModel):
     loaded: bool
     model_dir: str
+    models: Optional[list] = None
+
+
+class ModelInfo(BaseModel):
+    name: str
+    loaded: bool
+    version: str = ""
 
 
 class TrainingStartRequest(BaseModel):

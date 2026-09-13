@@ -32,6 +32,9 @@ async def lifespan(app: FastAPI):
         registry.load_models(settings.MODEL_DIR)
     except Exception as e:
         logger.error(f"Gagal load model saat startup: {e}")
+    # FIX: simpan di app.state agar tidak bergantung singleton implisit
+    # (lebih rapi untuk testing & multi-worker).
+    app.state.registry = registry
     if not registry.is_loaded:
         logger.warning(
             f"ML model belum lengkap di {settings.MODEL_DIR}. "

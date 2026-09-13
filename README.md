@@ -1,16 +1,17 @@
 # Bu Dian ML Service
 
-API inferensi untuk deteksi alergen makanan menggunakan pipeline OCR + Word2Vec + BiLSTM. Dibangun dengan FastAPI.
+API inferensi untuk deteksi alergen makanan menggunakan pipeline OCR + Word2Vec + BiLSTM + BERT (dual-model). Dibangun dengan FastAPI.
 
 ## Tech Stack
 
 - Python 3.11
 - FastAPI + Uvicorn
-- TensorFlow / Keras 2.17
+- TensorFlow / Keras 2.17 (BiLSTM)
+- PyTorch + Transformers (BERT, opsional)
 - Gensim (Word2Vec)
 - OpenCV (image preprocessing)
-- Tesseract OCR (ekstraksi teks)
-- Sastrawi (NLP Indonesia)
+- Tesseract OCR (ekstraksi teks, `ind+eng`)
+- Sastrawi (NLP Indonesia, hanya jalur BiLSTM)
 - Pydantic (data validation)
 
 ## Pipeline Deteksi
@@ -37,8 +38,12 @@ Word2Vec Embedding — vektorisasi teks
 Klasifikasi BiLSTM — prediksi safe/unsafe
     │
     ▼
-Hasil: { result: "safe"|"unsafe", confidence_score, allergens[] }
+Hasil: { result: "safe"|"unsafe", confidence_score, allergens[], model_name, scores }
 ```
+
+Deteksi mendukung `?model=bilstm|bert|ensemble` (default `bilstm`).
+BERT menerima teks mentah (tanpa stopword removal); BiLSTM memakai teks
+preprocess Sastrawi. Ensemble default `weighted` (0.4 BiLSTM + 0.6 BERT).
 
 ## Setup
 
@@ -103,10 +108,11 @@ Server berjalan di http://localhost:8000
 | GET | `/` | Root message |
 | GET | `/api/v1/health` | Health check |
 | GET | `/api/v1/health/ready` | Readiness check (model loaded?) |
-| POST | `/api/v1/detection/upload` | Upload gambar untuk deteksi |
-| POST | `/api/v1/detection/text` | Klasifikasi teks komposisi |
+| POST | `/api/v1/detection/upload?model=ensemble` | Upload gambar (pilih model) |
+| POST | `/api/v1/detection/text?model=bert` | Klasifikasi teks (pilih model) |
 | GET | `/api/v1/detection/{id}` | Ambil hasil deteksi |
-| GET | `/api/v1/model/status` | Status model |
+| GET | `/api/v1/model/status` | Status model (per-model) |
+| GET | `/api/v1/model/list` | Daftar model dual-model + threshold |
 | GET | `/api/v1/model/metrics` | Metrik model |
 | POST | `/api/v1/model/train` | Trigger training ulang |
 | GET | `/api/v1/model/train/status` | Status training |
@@ -117,10 +123,19 @@ Letakkan file model yang sudah di-training di direktori `models/`:
 
 ```
 models/
-├── bilstm_model.keras    # Model BiLSTM
+├── bilstm_model.keras    # Model BiLSTM (alias bilstm_word2vec.keras)
 ├── word2vec.model        # Model Word2Vec (Gensim)
-├── tokenizer.pkl         # Tokenizer (Keras)
-└── label_encoder.pkl     # Label encoder
+├── tokenizer.pkl         # Tokenizer (Keras, legacy)
+├── tokenizer_bilstm.json # Tokenizer (JSON, dual-model)
+├── label_encoder.pkl     # Label encoder
+├── label_map.json        # Label map
+├── thresholds.json       # Threshold per model
+├── metadata.json         # Identitas artefak
+└── bert/                 # Model BERT (format HuggingFace)
+    ├── config.json
+    ├── model.safetensors
+    ├── tokenizer.json
+    └── threshold.json
 ```
 
 ## Docker

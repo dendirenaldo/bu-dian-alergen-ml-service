@@ -21,7 +21,9 @@ class TextPreprocessor:
             List of filtered tokens.
         """
         text = text.lower()
-        text = re.sub(r"[^a-z0-9\s]", "", text)
+        # FIX: ganti dengan spasi (bukan "") agar 'susu-bubuk' → 'susu bubuk'
+        # (konsisten dengan simple_tokenize & training). "" menggabung kata.
+        text = re.sub(r"[^a-z0-9\s]", " ", text)
         text = self._stopword_remover.remove(text)
         tokens = text.split()
         tokens = [
