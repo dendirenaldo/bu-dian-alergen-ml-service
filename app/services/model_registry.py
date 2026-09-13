@@ -11,6 +11,44 @@ from tensorflow.keras.models import load_model
 logger = logging.getLogger(__name__)
 
 
+class _JsonTokenizer:
+    """Adapter tokenizer dari JSON export training (tanpa pickle).
+
+    Pickle lintas repo rapuh (path kelas sama, isi beda). JSON berisi
+    {vocab_size, max_len, word_index} direkonstruksi ke Keras Tokenizer.
+    """
+
+    def __init__(self, vocab_size: int, max_len: int, word_index: dict):
+        from tensorflow.keras.preprocessing.text import Tokenizer as KerasTokenizer
+
+        self.vocab_size = vocab_size
+        self.max_len = max_len
+        tok = KerasTokenizer(num_words=vocab_size, oov_token="<OOV>")
+        tok.word_index = dict(word_index)
+        # Pastikan <OOV> ada (penting bila JSON dibuat manual/vocab kecil).
+        tok.word_index.setdefault("<OOV>", 1)
+        tok.index_word = {int(v): k for k, v in tok.word_index.items()}
+        self._tokenizer = tok
+
+    def texts_to_sequences(self, texts):
+        seqs = self._tokenizer.texts_to_sequences(texts)
+        return [[i if i < self.vocab_size else 1 for i in s] for s in seqs]
+
+    @property
+    def word_index(self):
+        return self._tokenizer.word_index
+
+
+def _load_tokenizer_json(path: str):
+    with open(path, encoding="utf-8") as f:
+        cfg = json.load(f)
+    return _JsonTokenizer(
+        vocab_size=int(cfg["vocab_size"]),
+        max_len=int(cfg["max_len"]),
+        word_index=dict(cfg["word_index"]),
+    )
+
+
 class ModelRegistry:
     """Singleton registry dual-model (BiLSTM + BERT) di memori."""
 
@@ -86,9 +124,26 @@ class ModelRegistry:
                 logger.info("Word2Vec model loaded")
 
             if os.path.exists(tokenizer_path):
-                with open(tokenizer_path, "rb") as f:
-                    self._tokenizer = pickle.load(f)
-                logger.info("Tokenizer loaded")
+                loaded_tok = None
+                # Jalur utama: JSON (robust lintas repo). Pickle hanya fallback.
+                json_path = os.path.join(model_dir, "tokenizer_bilstm.json")
+                if os.path.exists(json_path):
+                    try:
+                        loaded_tok = _load_tokenizer_json(json_path)
+                        logger.info("Tokenizer loaded (JSON)")
+                    except Exception as e:
+                        logger.warning("Gagal load tokenizer JSON: %s", e)
+                if loaded_tok is None:
+                    try:
+                        with open(tokenizer_path, "rb") as f:
+                            cand = pickle.load(f)
+                        # Validasi: objek harus bisa texts_to_sequences.
+                        cand.texts_to_sequences(["uji coba"])
+                        loaded_tok = cand
+                        logger.info("Tokenizer loaded (pickle)")
+                    except Exception as e:
+                        logger.warning("Gagal load tokenizer pickle: %s", e)
+                self._tokenizer = loaded_tok
 
             if os.path.exists(le_path):
                 with open(le_path, "rb") as f:

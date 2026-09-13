@@ -4,9 +4,29 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from app.api.deps import get_api_key, get_model_registry
-from app.schemas.detection import DetectionResponse, TextDetectionRequest
+from app.schemas.detection import (
+    AllergenResultSchema,
+    DetectionResponse,
+    TextDetectionRequest,
+)
 from app.services.detection_pipeline import DetectionPipeline
 from app.services.model_registry import ModelRegistry
+
+
+def _to_allergen_schemas(allergens) -> list:
+    """Konversi dataclass pipeline -> schema API (pydantic v2 ketat)."""
+    out = []
+    for a in allergens or []:
+        if isinstance(a, dict):
+            out.append(AllergenResultSchema(**a))
+        else:
+            out.append(AllergenResultSchema(
+                name=getattr(a, "name", ""),
+                confidence=float(getattr(a, "confidence", 0.0)),
+                severity=getattr(a, "severity", ""),
+            ))
+    return out
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +103,7 @@ async def upload_image(
         result=result.result,
         confidence_score=result.confidence_score,
         ocr_text=result.ocr_text,
-        allergens=result.allergens,
+        allergens=_to_allergen_schemas(result.allergens),
         processing_time_ms=result.processing_time_ms,
         detection_method=result.detection_method,
         model_name=result.model_name,
@@ -119,7 +139,7 @@ async def classify_text(
         result=result.result,
         confidence_score=result.confidence_score,
         ocr_text=result.ocr_text,
-        allergens=result.allergens,
+        allergens=_to_allergen_schemas(result.allergens),
         processing_time_ms=result.processing_time_ms,
         detection_method=result.detection_method,
         model_name=result.model_name,

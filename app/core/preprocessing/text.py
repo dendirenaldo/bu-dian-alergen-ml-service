@@ -8,8 +8,26 @@ class TextPreprocessor:
     """Text preprocessing with Sastrawi stopwords and token filtering."""
 
     def __init__(self):
-        self._stopword_remover = StopWordRemoverFactory().createStopWordRemover()
-        self._stopwords = set(StopWordRemoverFactory().get_stop_words())
+        # Lazy: stopword remover hanya dibuat saat preprocess() dipakai.
+        # preprocess_v5 (BiLSTM final) tidak butuh Sastrawi sama sekali,
+        # dan API Sastrawi berbeda antar versi (camelCase vs snake_case).
+        self._stopword_remover = None
+        self._stopwords = None
+
+    def _ensure_stopwords(self):
+        if self._stopwords is not None:
+            return
+        factory = StopWordRemoverFactory()
+        if hasattr(factory, "get_stop_words"):
+            self._stopwords = set(factory.get_stop_words())
+        elif hasattr(factory, "get_stopwords"):
+            self._stopwords = set(factory.get_stopwords())
+        else:
+            self._stopwords = set()
+        for attr in ("createStopWordRemover", "create_stop_word_remover"):
+            if hasattr(factory, attr):
+                self._stopword_remover = getattr(factory, attr)()
+                break
 
     def preprocess(self, text: str) -> List[str]:
         """Lowercase, remove non-alphanumeric, remove stopwords, filter short tokens.
@@ -24,7 +42,9 @@ class TextPreprocessor:
         # FIX: ganti dengan spasi (bukan "") agar 'susu-bubuk' → 'susu bubuk'
         # (konsisten dengan simple_tokenize & training). "" menggabung kata.
         text = re.sub(r"[^a-z0-9\s]", " ", text)
-        text = self._stopword_remover.remove(text)
+        self._ensure_stopwords()
+        if self._stopword_remover is not None:
+            text = self._stopword_remover.remove(text)
         tokens = text.split()
         tokens = [
             t for t in tokens if t not in self._stopwords and len(t) >= 2 and not t.isdigit()
@@ -41,6 +61,19 @@ class TextPreprocessor:
             Space-joined preprocessed tokens.
         """
         return " ".join(self.preprocess(text))
+
+    def preprocess_v5(self, text: str) -> List[str]:
+        """Tokenisasi parity model final V5 (WAJIB untuk BiLSTM V5).
+
+        Model final (mask_zero, min_count=1, tanpa digit-fold) dilatih
+        dengan ``simple_tokenize`` TANPA stopword removal. Memakai
+        ``preprocess()`` (Sastrawi) di sini menyebabkan train-serve skew.
+        """
+        return self.simple_tokenize(text)
+
+    def preprocess_v5_full(self, text: str) -> str:
+        """Versi string dari :meth:`preprocess_v5`."""
+        return " ".join(self.preprocess_v5(text))
 
     def simple_tokenize(self, text: str) -> List[str]:
         """Simple tokenization: lowercase, remove non-alphanumeric, split.

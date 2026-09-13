@@ -174,15 +174,20 @@ class DetectionPipeline:
         if not loaded or model is None or tokenizer is None:
             raise RuntimeError("Models not loaded")
 
-        tokens = self._preprocessor.preprocess(text)
-        cleaned = " ".join(tokens)
-        if not cleaned.strip():
-            raise ValueError("Teks kosong setelah preprocessing")
+        # PARITY V5: tokenizer Keras menerima teks MENTAH persis seperti
+        # saat training. Jangan pre-clean (mis. preprocess_v5) sebelum ini
+        # — filter internal Keras + word_index sudah terkunci dan
+        # pembersihan ganda menggeser urutan token.
+        raw = (text or "").strip()
+        if not raw:
+            raise ValueError("Teks kosong")
 
         pad_len = settings.MAX_LEN
         # OOV guard: cap indeks >= vocab agar tidak IndexError.
         vocab = getattr(settings, "VOCAB_SIZE", 20000)
-        seq = tokenizer.texts_to_sequences([cleaned])
+        seq = tokenizer.texts_to_sequences([text])
+        if not seq or not seq[0]:
+            raise ValueError("Teks kosong setelah tokenisasi")
         seq = [[i if i < vocab else 1 for i in s] for s in seq]
         pad = tf.keras.preprocessing.sequence.pad_sequences(
             seq, maxlen=pad_len, padding="post", truncating="post"
