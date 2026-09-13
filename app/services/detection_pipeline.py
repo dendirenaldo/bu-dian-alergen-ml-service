@@ -233,8 +233,21 @@ class DetectionPipeline:
         bert_model.eval()
         with torch.no_grad():
             logits = bert_model(**enc).logits.detach().cpu().numpy().ravel()
-        import math
-        score = float(1 / (1 + math.exp(-float(logits[0]))))
+        # Kontrak BERT final: num_labels=2 + softmax, id unsafe dari config.
+        # (Kode lama asumsi 1 logit + sigmoid — salah untuk head 2 neuron.)
+        if logits.size == 1:
+            import math
+            score = float(1 / (1 + math.exp(-float(logits[0]))))
+        else:
+            id2label = getattr(getattr(bert_model, "config", None), "id2label", None) or {}
+            labels = [str(v).lower() for v in id2label.values()]
+            try:
+                unsafe_idx = labels.index("unsafe")
+            except ValueError:
+                unsafe_idx = 1
+            shifted = logits - float(np.max(logits))
+            exp = np.exp(shifted)
+            score = float(exp[unsafe_idx] / exp.sum())
         threshold = float(bert_thr or getattr(settings, "BERT_THRESHOLD", 0.5))
         label = "unsafe" if score >= threshold else "safe"
         confidence = score if label == "unsafe" else 1 - score
