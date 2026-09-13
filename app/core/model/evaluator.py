@@ -39,10 +39,14 @@ class ModelEvaluator:
         y_pred = (y_prob >= 0.5).astype(int)
 
         acc = accuracy_score(y_test, y_pred)
+        # Parity training: zero_division=0 (bukan 1) + guard single-class.
         prec, rec, f1, _ = precision_recall_fscore_support(
-            y_test, y_pred, average="binary", zero_division=1
+            y_test, y_pred, average="binary", zero_division=0
         )
-        auc = roc_auc_score(y_test, y_prob)
+        if len(np.unique(np.asarray(y_test))) < 2:
+            auc = float("nan")
+        else:
+            auc = roc_auc_score(y_test, y_prob)
 
         eval_table = pd.DataFrame(
             [
@@ -56,7 +60,7 @@ class ModelEvaluator:
 
         target_names = list(self.label_encoder.classes_)
         report_dict = classification_report(
-            y_test, y_pred, target_names=target_names, output_dict=True, zero_division=1
+            y_test, y_pred, target_names=target_names, output_dict=True, zero_division=0
         )
         report_df = (
             pd.DataFrame(report_dict)

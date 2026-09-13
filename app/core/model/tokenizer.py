@@ -24,13 +24,17 @@ class TextTokenizer:
     def texts_to_sequences(self, texts: List[str]) -> List[List[int]]:
         """Convert texts to integer sequences.
 
+        Parity training: indeks >= vocab_size dipetakan ke OOV (1) agar
+        tidak IndexError di Embedding(input_dim=vocab_size).
+
         Args:
             texts: List of raw text strings.
 
         Returns:
-            List of integer sequences.
+            List of integer sequences (semua idx < vocab_size).
         """
-        return self.tokenizer.texts_to_sequences(texts)
+        seqs = self.tokenizer.texts_to_sequences(texts)
+        return [[i if i < self.vocab_size else 1 for i in s] for s in seqs]
 
     def pad_sequences(
         self, sequences: List[List[int]], padding: str = "post", truncating: str = "post"

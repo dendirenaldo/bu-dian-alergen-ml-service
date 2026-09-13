@@ -41,7 +41,7 @@ def test_registry_parity_vs_training():
     models_dir = os.path.join(os.path.dirname(__file__), "..", "models")
     tri_csv = os.path.join(
         os.path.dirname(__file__), "..", "..",
-        "bu-dian-alergen-ml-training", "output_final",
+        "bu-dian-alergen-ml-training", "artifacts", "bilstm", "output",
         "gold_kb_bilstm_triage.csv",
     )
     if not os.path.exists(os.path.join(models_dir, "bilstm_model.keras")):

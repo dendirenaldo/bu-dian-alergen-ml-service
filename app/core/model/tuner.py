@@ -15,6 +15,23 @@ from app.core.model.architecture import build_model
 
 logger = logging.getLogger(__name__)
 
+
+def _stratified_split(X, y, val_size: float, seed: int):
+    """Split train->(train,val) stratified (parity training).
+
+    validation_split Keras mengambil fraksi akhir tanpa stratifikasi.
+    """
+    from sklearn.model_selection import StratifiedShuffleSplit
+
+    y = np.asarray(y)
+    if len(np.unique(y)) >= 2 and min(np.bincount(y)) >= 2:
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=val_size,
+                                     random_state=seed)
+        tr_idx, va_idx = next(sss.split(X, y))
+        return X[tr_idx], X[va_idx], y[tr_idx], y[va_idx]
+    n_val = max(1, int(len(X) * val_size))
+    return X[:-n_val], X[-n_val:], y[:-n_val], y[-n_val:]
+
 # Hyperparameter search space
 BATCH_SIZE_OPTIONS = [16, 32, 64]
 LSTM_UNITS_OPTIONS = [[32, 64], [16, 32], [64, 64]]
@@ -78,13 +95,17 @@ class ModelTuner:
         """
         best_val_loss = float("inf")
         best_params = None
+        # RNG lokal terseed (parity training) — bukan np.random global.
+        rng = np.random.RandomState(seed)
+        X_tr, X_va, y_tr, y_va = _stratified_split(
+            np.asarray(X_train), np.asarray(y_train), self.val_split, seed)
 
         for trial in range(self.num_trials):
-            batch_size = int(np.random.choice(BATCH_SIZE_OPTIONS))
-            lstm_pair = LSTM_UNITS_OPTIONS[np.random.randint(len(LSTM_UNITS_OPTIONS))]
-            dropout_pair = DROPOUT_OPTIONS[np.random.randint(len(DROPOUT_OPTIONS))]
-            tuning_epochs = int(np.random.choice(TUNING_EPOCHS_OPTIONS))
-            lr = float(np.random.choice(LR_OPTIONS))
+            batch_size = int(rng.choice(BATCH_SIZE_OPTIONS))
+            lstm_pair = LSTM_UNITS_OPTIONS[rng.randint(len(LSTM_UNITS_OPTIONS))]
+            dropout_pair = DROPOUT_OPTIONS[rng.randint(len(DROPOUT_OPTIONS))]
+            tuning_epochs = int(rng.choice(TUNING_EPOCHS_OPTIONS))
+            lr = float(rng.choice(LR_OPTIONS))
 
             params = {
                 "lstm_units_1": lstm_pair[0],
@@ -127,9 +148,9 @@ class ModelTuner:
                     ModelCheckpoint(ckpt_path, monitor="val_loss", save_best_only=True, verbose=0),
                 ]
                 h = m.fit(
-                    X_train,
-                    y_train,
-                    validation_split=self.val_split,
+                    X_tr,
+                    y_tr,
+                    validation_data=(X_va, y_va),
                     epochs=tuning_epochs,
                     batch_size=batch_size,
                     callbacks=cb,
@@ -199,9 +220,9 @@ class ModelTuner:
         final_ckpt = os.path.join(tempfile.gettempdir(), f"best_{model_name}_final.keras")
         try:
             final_model.fit(
-                X_train,
-                y_train,
-                validation_split=self.val_split,
+                X_tr,
+                y_tr,
+                validation_data=(X_va, y_va),
                 epochs=max_epochs,
                 batch_size=best_params["batch_size"],
                 callbacks=callbacks,
