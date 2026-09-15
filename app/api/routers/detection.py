@@ -38,8 +38,11 @@ ModelChoice = Literal["bilstm", "bert", "ensemble"]
 
 
 def _check_ready(registry: ModelRegistry, model: str) -> None:
-    if model == "bert" and not registry.is_ready("bert"):
-        raise HTTPException(status_code=503, detail="Model BERT belum dimuat")
+    # Early-return per model: BERT-only tidak boleh menuntut BiLSTM.
+    if model == "bert":
+        if not registry.is_ready("bert"):
+            raise HTTPException(status_code=503, detail="Model BERT belum dimuat")
+        return
     if model == "ensemble" and not registry.is_ready("ensemble"):
         raise HTTPException(
             status_code=503,

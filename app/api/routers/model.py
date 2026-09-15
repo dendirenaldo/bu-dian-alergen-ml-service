@@ -106,32 +106,13 @@ async def start_training(
     registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str = Depends(get_api_key),
 ):
-    _validate_data_path(request.data_path)
-    service = _get_training_service(registry)
-
-    try:
-        service.start_training(
-            data_path=request.data_path,
-            text_col=request.text_col,
-            label_col=request.label_col,
-        )
-    except RuntimeError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-    status = service.status
-    return TrainingStatusResponse(
-        status=status.status,
-        progress=status.progress,
-        epoch=status.epoch,
-        total_epochs=status.total_epochs,
-        loss=status.loss,
-        accuracy=status.accuracy,
-        val_loss=status.val_loss,
-        val_accuracy=status.val_accuracy,
-        message=status.message,
-        started_at=status.started_at,
-        finished_at=status.finished_at,
-        error=status.error,
+    # DINONAKTIFKAN: pipeline retrain API melanggar kontrak leakage-safe
+    # (split acak, Sastrawi, min_count divergen, tanpa frozen holdout).
+    # Training resmi hanya via repo ml-training + HPC. Lihat docs/bert-hpc.md.
+    raise HTTPException(
+        status_code=503,
+        detail="Retraining via API dinonaktifkan: melanggar kontrak leakage-safe. "
+        "Gunakan pipeline resmi (repo ml-training).",
     )
 
 

@@ -143,18 +143,16 @@ class DetectionPipeline:
         if model == "bert":
             label, conf, score = self._classify_bert(text)
             return label, conf, {"bert": score}, "bert"
-        # ensemble
+        # ensemble: KEDUA cabang wajib sukses. Fallback diam-diam dilarang
+        # karena merusak kontrak respons (scores dua kunci + label ensemble).
         try:
             b_label, b_conf, b_score = self._classify_bilstm(text)
         except Exception as e:
-            logger.warning("BiLSTM ensemble gagal, fallback BERT: %s", e)
-            label, conf, score = self._classify_bert(text)
-            return label, conf, {"bert": score}, "bert"
+            raise RuntimeError(f"Cabang BiLSTM ensemble gagal: {e}") from e
         try:
             t_label, t_conf, t_score = self._classify_bert(text)
         except Exception as e:
-            logger.warning("BERT ensemble gagal, fallback BiLSTM: %s", e)
-            return b_label, b_conf, {"bilstm": b_score}, "bilstm"
+            raise RuntimeError(f"Cabang BERT ensemble gagal: {e}") from e
         if (settings.ENSEMBLE_STRATEGY or "weighted") == "vote":
             votes = [1 if b_label == "unsafe" else 0, 1 if t_label == "unsafe" else 0]
             unsafe = sum(votes) >= 1  # OR-vote: utamakan recall alergen
@@ -164,6 +162,7 @@ class DetectionPipeline:
             wt = float(settings.ENSEMBLE_WEIGHT_BERT)
             s = (wb + wt) or 1.0
             score = (wb * b_score + wt * t_score) / s
+            # Ambang ensemble fixed 0.5 sesuai kontrak (bukan threshold per-model).
             unsafe = score >= 0.5
         label = "unsafe" if unsafe else "safe"
         conf = score if unsafe else 1 - score

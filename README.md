@@ -11,7 +11,7 @@ API inferensi untuk deteksi alergen makanan menggunakan pipeline OCR + Word2Vec 
 - Gensim (Word2Vec)
 - OpenCV (image preprocessing)
 - Tesseract OCR (ekstraksi teks, `ind+eng`)
-- Sastrawi (NLP Indonesia, hanya jalur BiLSTM)
+- Sastrawi (legacy: hanya jalur retrain, BUKAN jalur inferensi)
 - Pydantic (data validation)
 
 ## Pipeline Deteksi
@@ -29,7 +29,7 @@ OCR - Ekstraksi Teks (Tesseract) — deteksi teks komposisi
 Parsing Teks Komposisi — ekstraksi bahan dari label
     │
     ▼
-Preprocessing Teks (Sastrawi) — stopword removal, normalisasi
+Tokenisasi Keras langsung (teks mentah, parity training — TANPA Sastrawi)
     │
     ▼
 Word2Vec Embedding — vektorisasi teks
@@ -42,8 +42,9 @@ Hasil: { result: "safe"|"unsafe", confidence_score, allergens[], model_name, sco
 ```
 
 Deteksi mendukung `?model=bilstm|bert|ensemble` (default `bilstm`).
-BERT menerima teks mentah (tanpa stopword removal); BiLSTM memakai teks
-preprocess Sastrawi. Ensemble default `weighted` (0.4 BiLSTM + 0.6 BERT).
+BiLSTM maupun BERT menerima teks mentah (tanpa stopword removal) sesuai
+kontrak parity training. Ensemble default `weighted` (0.4 BiLSTM + 0.6 BERT),
+ambang fixed 0.5. Endpoint `POST /model/train` DINONAKTIFKAN (503).
 
 ## Setup
 
