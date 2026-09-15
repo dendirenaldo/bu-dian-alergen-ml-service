@@ -16,9 +16,11 @@ build/
 *.egg-info/
 *.egg
 
-# Environment
+# Environment (JANGAN commit .env berisi secret/API key)
 .env
 .env.local
+.env.*
+!.env.example
 
 # IDE
 .idea/
