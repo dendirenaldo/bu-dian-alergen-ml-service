@@ -145,18 +145,25 @@ class DetectionPipeline:
             return label, conf, {"bert": score}, "bert"
         # ensemble: KEDUA cabang wajib sukses. Fallback diam-diam dilarang
         # karena merusak kontrak respons (scores dua kunci + label ensemble).
+        # ValueError (input tidak valid, mis. teks kosong) TIDAK dibungkus
+        # agar tetap terpetakan 400 di router, bukan 503.
         try:
             b_label, b_conf, b_score = self._classify_bilstm(text)
+        except ValueError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Cabang BiLSTM ensemble gagal: {e}") from e
         try:
             t_label, t_conf, t_score = self._classify_bert(text)
+        except ValueError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Cabang BERT ensemble gagal: {e}") from e
         if (settings.ENSEMBLE_STRATEGY or "weighted") == "vote":
-            votes = [1 if b_label == "unsafe" else 0, 1 if t_label == "unsafe" else 0]
-            unsafe = sum(votes) >= 1  # OR-vote: utamakan recall alergen
-            score = (b_score + t_score) / 2.0
+            # OR-vote: utamakan recall alergen. Skor = max kedua probabilitas
+            # agar invarian "unsafe => confidence >= 0.5" tetap berlaku.
+            unsafe = b_label == "unsafe" or t_label == "unsafe"
+            score = max(b_score, t_score)
         else:
             wb = float(settings.ENSEMBLE_WEIGHT_BILSTM)
             wt = float(settings.ENSEMBLE_WEIGHT_BERT)

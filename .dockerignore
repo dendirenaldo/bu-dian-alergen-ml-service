@@ -1,0 +1,24 @@
+# Build context minimal — jangan salin env/venv/cache ke image.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
+*.log
+.DS_Store
+# Model artifacts & tests bukan bagian image (dipasang via volume/LFS).
+models/
+tests/
+ocr_output/
+dataset/
+Dockerfile
+.dockerignore
+README.md

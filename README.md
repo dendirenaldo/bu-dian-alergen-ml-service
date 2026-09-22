@@ -115,8 +115,12 @@ Server berjalan di http://localhost:8000
 | GET | `/api/v1/model/status` | Status model (per-model) |
 | GET | `/api/v1/model/list` | Daftar model dual-model + threshold |
 | GET | `/api/v1/model/metrics` | Metrik model |
-| POST | `/api/v1/model/train` | Trigger training ulang |
-| GET | `/api/v1/model/train/status` | Status training |
+| POST | `/api/v1/model/train` | **DINONAKTIFKAN (503)** — retrain ilegal di API; training resmi via repo ml-training (BiLSTM) dan `artifacts/bert` (HPC). `GET /model/train/status` juga dihapus. |
+
+Catatan status retrain: endpoint `POST /model/train` sengaja dipertahankan
+agar klien lama mendapat pesan jelas (503, tanpa body — bukan 422/404).
+Jangan pernah menghidupkan kembali `TrainingService` (melanggar kontrak
+leakage-safe: split acak, Sastrawi, tanpa frozen holdout).
 
 ## Model Files
 

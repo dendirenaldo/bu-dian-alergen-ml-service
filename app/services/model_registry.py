@@ -153,8 +153,21 @@ class ModelRegistry:
             if os.path.exists(thr_path):
                 try:
                     with open(thr_path, encoding="utf-8") as f:
-                        self._thresholds = dict(json.load(f))
-                    logger.info("Thresholds loaded: %s", self._thresholds)
+                        raw_thr = dict(json.load(f))
+                    # Kontrak produksi: threshold FIXED 0.5 (lihat ml-training).
+                    # File legacy tanpa "fixed" atau bernilai != 0.5 ditolak
+                    # dan diganti kontrak aman agar tidak ada drift tersembunyi.
+                    fixed = raw_thr.get("fixed") is True
+                    bilstm_thr = float(raw_thr.get("bilstm", 0.0))
+                    if fixed and bilstm_thr == 0.5:
+                        self._thresholds = {"bilstm": bilstm_thr, "fixed": True}
+                        logger.info("Thresholds loaded: %s", self._thresholds)
+                    else:
+                        logger.warning(
+                            "thresholds.json tidak sesuai kontrak fixed 0.5 "
+                            "(fixed=%s, bilstm=%s); memakai 0.5.", fixed, bilstm_thr,
+                        )
+                        self._thresholds = {"bilstm": 0.5, "fixed": True}
                 except Exception as e:
                     logger.warning("Gagal load thresholds.json: %s", e)
 
@@ -211,7 +224,15 @@ class ModelRegistry:
             thr_file = os.path.join(bert_dir, "threshold.json")
             if os.path.exists(thr_file):
                 with open(thr_file, encoding="utf-8") as f:
-                    self._bert_threshold = float(json.load(f).get("threshold", 0.5))
+                    thr_payload = dict(json.load(f))
+                bert_thr = float(thr_payload.get("threshold", 0.5))
+                if thr_payload.get("fixed") is True and bert_thr != 0.5:
+                    logger.warning(
+                        "BERT threshold.json fixed=true tapi threshold=%s; "
+                        "memakai kontrak 0.5.", bert_thr,
+                    )
+                    bert_thr = 0.5
+                self._bert_threshold = bert_thr
             meta_file = os.path.join(bert_dir, "metrics.json")
             name = fallback_name
             if os.path.exists(meta_file):
@@ -242,7 +263,8 @@ class ModelRegistry:
                 return self._bert_model is not None and self._bert_tokenizer is not None
             if model_name == "ensemble":
                 return (self._bi_lstm_model is not None and self._tokenizer is not None
-                        and self._bert_model is not None)
+                        and self._bert_model is not None
+                        and self._bert_tokenizer is not None)
             return self._loaded and self._bi_lstm_model is not None and self._tokenizer is not None
 
     def bert_snapshot(self):

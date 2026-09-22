@@ -53,6 +53,9 @@ models/*.pkl
 models/*.model
 models/*.bin
 models/*.npy
+# Artefak BERT (475MB+, taruh out-of-band via export/scp — jangan masuk git)
+models/bert/
+*.safetensors
 
 # OCR output (generated, not source)
 ocr_output/

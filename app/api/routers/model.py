@@ -1,42 +1,15 @@
 import logging
-import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_api_key, get_model_registry
 from app.config import settings
-from app.schemas.model import ModelStatusResponse, TrainingStartRequest, TrainingStatusResponse
+from app.schemas.model import ModelStatusResponse
 from app.services.model_registry import ModelRegistry
-from app.services.training_service import TrainingService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-_training_service: Optional[TrainingService] = None
-
-
-def _get_training_service(registry: ModelRegistry) -> TrainingService:
-    global _training_service
-    if _training_service is None:
-        _training_service = TrainingService(registry)
-    return _training_service
-
-
-def _validate_data_path(data_path: str) -> str:
-    """Validate and resolve data_path to prevent path traversal."""
-    abs_path = os.path.abspath(data_path)
-    allowed_dirs = [os.path.abspath(d) for d in settings.ALLOWED_DATA_DIRS.split(",")]
-    # FIX: commonpath (bukan startswith) agar /data_evil tidak lolos untuk /data.
-    if not any(
-        os.path.commonpath([abs_path, d]) == d for d in allowed_dirs
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Data path is outside allowed directories",
-        )
-    return abs_path
 
 
 @router.get("/model/status", response_model=ModelStatusResponse)
@@ -100,40 +73,20 @@ async def model_metrics(
     }
 
 
-@router.post("/model/train", response_model=TrainingStatusResponse)
+@router.post("/model/train")
 async def start_training(
-    request: TrainingStartRequest,
-    registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str = Depends(get_api_key),
 ):
-    # DINONAKTIFKAN: pipeline retrain API melanggar kontrak leakage-safe
-    # (split acak, Sastrawi, min_count divergen, tanpa frozen holdout).
-    # Training resmi hanya via repo ml-training + HPC. Lihat docs/bert-hpc.md.
+    """DINONAKTIFKAN permanen.
+
+    Pipeline retrain API melanggar kontrak leakage-safe (split acak, Sastrawi,
+    min_count divergen, tanpa frozen holdout). Training resmi hanya via repo
+    ml-training (BiLSTM) dan artifacts/bert (HPC). Lihat docs/bert-hpc.md.
+    Endpoint dipertahankan agar klien lama mendapat pesan jelas (503),
+    bukan 404/422.
+    """
     raise HTTPException(
         status_code=503,
         detail="Retraining via API dinonaktifkan: melanggar kontrak leakage-safe. "
         "Gunakan pipeline resmi (repo ml-training).",
-    )
-
-
-@router.get("/model/train/status", response_model=TrainingStatusResponse)
-async def training_status(
-    registry: ModelRegistry = Depends(get_model_registry),
-    _api_key: str = Depends(get_api_key),
-):
-    service = _get_training_service(registry)
-    status = service.status
-    return TrainingStatusResponse(
-        status=status.status,
-        progress=status.progress,
-        epoch=status.epoch,
-        total_epochs=status.total_epochs,
-        loss=status.loss,
-        accuracy=status.accuracy,
-        val_loss=status.val_loss,
-        val_accuracy=status.val_accuracy,
-        message=status.message,
-        started_at=status.started_at,
-        finished_at=status.finished_at,
-        error=status.error,
     )

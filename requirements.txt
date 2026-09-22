@@ -10,12 +10,14 @@ opencv-python==4.11.0.86
 pillow==11.3.0
 pytesseract==0.3.13
 Sastrawi==1.0.1
-tensorflow==2.17.0
-gensim==4.3.2
+tensorflow==2.16.2
+gensim==4.3.3
 scikit-learn==1.5.1
 
 # --- BERT inference (HuggingFace PyTorch, opsional tapi disarankan) ---
-torch>=2.2
-transformers>=4.40
-accelerate>=0.29
-tokenizers>=0.19
+# Versi teruji lokal/VPS: torch 2.14.0+cpu, transformers 5.17.0.
+# Batas atas mencegah breaking change mayor tanpa pengujian ulang.
+torch>=2.2,<3
+transformers>=4.40,<6
+accelerate>=0.29,<2
+tokenizers>=0.19,<1
