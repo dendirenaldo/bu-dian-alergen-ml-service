@@ -21,3 +21,4 @@ torch>=2.2,<3
 transformers>=4.40,<6
 accelerate>=0.29,<2
 tokenizers>=0.19,<1
+httpx==0.28.1      # starlette TestClient (tests)

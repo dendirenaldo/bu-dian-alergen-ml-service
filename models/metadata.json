@@ -1,8 +1,8 @@
 {
   "model": "bilstm_word2vec_v5",
-  "git_sha": "045f4d1",
+  "git_sha": "d1e1867",
   "threshold_fixed": 0.5,
-  "training_mode": "v5_parity",
+  "pipeline": "v5",
   "eval": [
     {
       "split": "Validation (real gold)",
