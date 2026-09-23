@@ -61,7 +61,7 @@ class DetectionResult:
     allergens: List[AllergenResult]
     processing_time_ms: int
     detection_method: str
-    model_name: str = "bilstm"
+    model_name: str = "bert"
     model_version: str = ""
     scores: Optional[dict] = None
 
@@ -75,7 +75,7 @@ class DetectionPipeline:
         self._preprocessor = TextPreprocessor()
 
     def detect_from_image(
-        self, image_bytes: bytes, model: str = "bilstm"
+        self, image_bytes: bytes, model: str = "bert"
     ) -> DetectionResult:
         start = time.time()
 
@@ -112,7 +112,7 @@ class DetectionPipeline:
         )
 
     def detect_from_text(
-        self, text: str, model: str = "bilstm"
+        self, text: str, model: str = "bert"
     ) -> DetectionResult:
         start = time.time()
 
@@ -133,8 +133,8 @@ class DetectionPipeline:
         )
 
     # -- klasifikasi dual-model --
-    def _classify_text(self, text: str, model: str = "bilstm") -> "tuple[str, float, dict, str]":
-        model = (model or "bilstm").lower()
+    def _classify_text(self, text: str, model: str = "bert") -> "tuple[str, float, dict, str]":
+        model = (model or "bert").lower()
         if model not in ("bilstm", "bert", "ensemble"):
             raise ValueError("model harus salah satu: bilstm, bert, ensemble")
         if model == "bilstm":

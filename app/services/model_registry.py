@@ -256,7 +256,7 @@ class ModelRegistry:
         with self._lock:
             return self._load_bert_internal(bert_dir)
 
-    def is_ready(self, model_name: str = "bilstm") -> bool:
+    def is_ready(self, model_name: str = "bert") -> bool:
         """Cek kesiapan per model: 'bilstm' | 'bert' | 'ensemble'."""
         with self._lock:
             if model_name == "bert":
@@ -273,7 +273,7 @@ class ModelRegistry:
             return (self._bert_model, self._bert_tokenizer,
                     self._bert_threshold, self._bert_model_name)
 
-    def get_threshold(self, model_name: str = "bilstm", default: float = 0.5) -> float:
+    def get_threshold(self, model_name: str = "bert", default: float = 0.5) -> float:
         """Threshold per model dari thresholds.json (fallback default)."""
         with self._lock:
             if model_name == "bert":

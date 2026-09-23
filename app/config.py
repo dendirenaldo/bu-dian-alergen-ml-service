@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     BERT_MODEL_NAME: str = "indobenchmark/indobert-base-p1"
     BERT_MAX_LEN: int = 256
     BERT_THRESHOLD: float = 0.5
-    # 'bilstm' | 'bert' | 'ensemble' — default ensemble bila BERT tersedia.
-    DEFAULT_MODEL: str = "bilstm"
+    # 'bilstm' | 'bert' | 'ensemble' — default bert (akurasi holdout tertinggi).
+    DEFAULT_MODEL: str = "bert"
     ENSEMBLE_STRATEGY: str = "weighted"  # 'weighted' | 'vote'
     ENSEMBLE_WEIGHT_BILSTM: float = 0.4
     ENSEMBLE_WEIGHT_BERT: float = 0.6

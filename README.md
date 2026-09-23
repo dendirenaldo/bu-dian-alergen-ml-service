@@ -41,10 +41,17 @@ Klasifikasi BiLSTM — prediksi safe/unsafe
 Hasil: { result: "safe"|"unsafe", confidence_score, allergens[], model_name, scores }
 ```
 
-Deteksi mendukung `?model=bilstm|bert|ensemble` (default `bilstm`).
+Deteksi mendukung `?model=bilstm|bert|ensemble` (default `bert`).
 BiLSTM maupun BERT menerima teks mentah (tanpa stopword removal) sesuai
 kontrak parity training. Ensemble default `weighted` (0.4 BiLSTM + 0.6 BERT),
 ambang fixed 0.5. Endpoint `POST /model/train` DINONAKTIFKAN (503).
+
+> Deploy BERT (wajib sebelum default `bert` bisa dipakai — bobot 475MB tidak
+> masuk git): salin `ml-training/artifacts/bert/results/model/` →
+> `ml-service/models/bert/` beserta `threshold.json`, lalu verifikasi
+> `GET /model/list`, `/model/status`, `/model/metrics` (`bert.loaded: true`)
+> dan `GET /health/ready` (`default_ready: true`). Tanpa ini `bert`/`ensemble`
+> balas 503 dan klien otomatis mencoba `bilstm` sekali.
 
 ## Setup
 

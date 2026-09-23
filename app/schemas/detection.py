@@ -21,6 +21,6 @@ class DetectionResponse(BaseModel):
     processing_time_ms: int = Field(..., ge=0)
     detection_method: str
     # Dual-model (opsional, backward-compatible: default bilstm).
-    model_name: str = "bilstm"
+    model_name: str = "bert"
     model_version: str = ""
     scores: Optional[dict] = None

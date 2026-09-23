@@ -57,7 +57,7 @@ async def upload_image(
     file: UploadFile | None = File(default=None),
     # Alias kompatibilitas: backend lama mengirim field 'image'.
     image: UploadFile | None = File(default=None),
-    model: ModelChoice = Query(default="bilstm", description="Model: bilstm|bert|ensemble"),
+    model: ModelChoice = Query(default="bert", description="Model: bilstm|bert|ensemble"),
     registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str | None = Depends(get_api_key),
 ):
@@ -118,7 +118,7 @@ async def upload_image(
 @router.post("/detection/text", response_model=DetectionResponse)
 async def classify_text(
     request: TextDetectionRequest,
-    model: ModelChoice = Query(default="bilstm", description="Model: bilstm|bert|ensemble"),
+    model: ModelChoice = Query(default="bert", description="Model: bilstm|bert|ensemble"),
     registry: ModelRegistry = Depends(get_model_registry),
     _api_key: str = Depends(get_api_key),
 ):
