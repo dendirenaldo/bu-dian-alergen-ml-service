@@ -25,7 +25,6 @@ class _JsonTokenizer:
         self.max_len = max_len
         tok = KerasTokenizer(num_words=vocab_size, oov_token="<OOV>")
         tok.word_index = dict(word_index)
-        # Pastikan <OOV> ada (penting bila JSON dibuat manual/vocab kecil).
         tok.word_index.setdefault("<OOV>", 1)
         tok.index_word = {int(v): k for k, v in tok.word_index.items()}
         self._tokenizer = tok
@@ -66,14 +65,12 @@ class ModelRegistry:
                 cls._instance._label_encoder = None
                 cls._instance._thresholds: dict = {}
                 cls._instance._metadata: dict = {}
-                # BERT (lazy, opsional)
                 cls._instance._bert_model = None
                 cls._instance._bert_tokenizer = None
                 cls._instance._bert_threshold: float = 0.5
                 cls._instance._bert_model_name: str = ""
             return cls._instance
 
-    # -- kompatibilitas: reset untuk testing --
     def reset(self) -> None:
         """Reset seluruh state (dipakai testing)."""
         with self._lock:
@@ -99,8 +96,6 @@ class ModelRegistry:
             self._load_models_internal(model_dir)
 
     def _load_models_internal(self, model_dir: str) -> None:
-        # FIX: bersihkan state lama dulu agar gagal-load tidak menyisakan
-        # model/tokenizer setengah (state divergen).
         self._bi_lstm_model = None
         self._word2vec_model = None
         self._tokenizer = None
@@ -123,21 +118,19 @@ class ModelRegistry:
                 self._word2vec_model = Word2Vec.load(w2v_path)
                 logger.info("Word2Vec model loaded")
 
-            if os.path.exists(tokenizer_path):
+            json_path = os.path.join(model_dir, "tokenizer_bilstm.json")
+            if os.path.exists(json_path) or os.path.exists(tokenizer_path):
                 loaded_tok = None
-                # Jalur utama: JSON (robust lintas repo). Pickle hanya fallback.
-                json_path = os.path.join(model_dir, "tokenizer_bilstm.json")
                 if os.path.exists(json_path):
                     try:
                         loaded_tok = _load_tokenizer_json(json_path)
                         logger.info("Tokenizer loaded (JSON)")
                     except Exception as e:
                         logger.warning("Gagal load tokenizer JSON: %s", e)
-                if loaded_tok is None:
+                if loaded_tok is None and os.path.exists(tokenizer_path):
                     try:
                         with open(tokenizer_path, "rb") as f:
                             cand = pickle.load(f)
-                        # Validasi: objek harus bisa texts_to_sequences.
                         cand.texts_to_sequences(["uji coba"])
                         loaded_tok = cand
                         logger.info("Tokenizer loaded (pickle)")
@@ -154,9 +147,6 @@ class ModelRegistry:
                 try:
                     with open(thr_path, encoding="utf-8") as f:
                         raw_thr = dict(json.load(f))
-                    # Kontrak produksi: threshold FIXED 0.5 (lihat ml-training).
-                    # File legacy tanpa "fixed" atau bernilai != 0.5 ditolak
-                    # dan diganti kontrak aman agar tidak ada drift tersembunyi.
                     fixed = raw_thr.get("fixed") is True
                     bilstm_thr = float(raw_thr.get("bilstm", 0.0))
                     if fixed and bilstm_thr == 0.5:
@@ -178,7 +168,6 @@ class ModelRegistry:
                 except Exception as e:
                     logger.warning("Gagal load metadata.json: %s", e)
 
-            # _loaded True hanya jika artefak kritis tersedia (hindari None.predict).
             has_core = self._bi_lstm_model is not None and self._tokenizer is not None
             self._loaded = bool(has_core)
             if has_core:
@@ -190,7 +179,6 @@ class ModelRegistry:
                     f"tokenizer={self._tokenizer is not None}). "
                     "Endpoint /detection akan 503 sampai model lengkap."
                 )
-            # Coba load BERT juga (opsional, tidak menggagalkan BiLSTM).
             try:
                 from app.config import settings as _settings
                 self._load_bert_internal(

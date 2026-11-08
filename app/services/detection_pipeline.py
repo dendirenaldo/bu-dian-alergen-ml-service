@@ -16,7 +16,6 @@ from app.services.model_registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
-# FIX (HIGH): kamus ID + EN dengan word-boundary (hindari 'egg in eggplant').
 KNOWN_ALLERGENS = {
     "gluten": ["wheat", "barley", "rye", "oats", "gluten", "semolina", "spelt",
                "gandum", "terigu"],
@@ -37,7 +36,6 @@ KNOWN_ALLERGENS = {
     "sulfite": ["sulfite", "sulphite", "sodium sulfite", "sulfit"],
 }
 
-# Precompile word-boundary regex per keyword.
 _ALLERGEN_PATTERNS: list[tuple[str, "re.Pattern"]] = []
 for _name, _kws in KNOWN_ALLERGENS.items():
     for _kw in _kws:
@@ -71,7 +69,6 @@ class DetectionPipeline:
 
     def __init__(self, registry: ModelRegistry):
         self.registry = registry
-        # FIX (HIGH): singleton preprocessor — jangan buat per request.
         self._preprocessor = TextPreprocessor()
 
     def detect_from_image(
@@ -85,8 +82,6 @@ class DetectionPipeline:
         ocr = OCREngine(lang=settings.TESSERACT_LANG, min_conf=settings.OCR_MIN_CONF)
         lines = ocr.extract_lines(processed_img)
 
-        # FIX: teruskan engine berkonfigurasi ke parser agar fallback
-        # extract_text memakai lang/min_conf yang sama.
         parser = CompositionParser(ocr_engine=ocr)
         composition = parser.parse(lines, image=processed_img)
 
@@ -94,8 +89,6 @@ class DetectionPipeline:
             composition = ocr.extract_text(processed_img)
 
         result, confidence, scores, used_model = self._classify_text(composition, model)
-        # FIX: alergen dihitung independen dari label model (tidak disembunyikan
-        # saat model memprediksi safe) — skor model tetap jadi penentu label.
         allergens = self._identify_allergens(composition, confidence)
 
         elapsed = int((time.time() - start) * 1000)
@@ -132,7 +125,6 @@ class DetectionPipeline:
             scores=scores,
         )
 
-    # -- klasifikasi dual-model --
     def _classify_text(self, text: str, model: str = "bert") -> "tuple[str, float, dict, str]":
         model = (model or "bert").lower()
         if model not in ("bilstm", "bert", "ensemble"):
@@ -143,10 +135,6 @@ class DetectionPipeline:
         if model == "bert":
             label, conf, score = self._classify_bert(text)
             return label, conf, {"bert": score}, "bert"
-        # ensemble: KEDUA cabang wajib sukses. Fallback diam-diam dilarang
-        # karena merusak kontrak respons (scores dua kunci + label ensemble).
-        # ValueError (input tidak valid, mis. teks kosong) TIDAK dibungkus
-        # agar tetap terpetakan 400 di router, bukan 503.
         try:
             b_label, b_conf, b_score = self._classify_bilstm(text)
         except ValueError:
@@ -160,8 +148,6 @@ class DetectionPipeline:
         except Exception as e:
             raise RuntimeError(f"Cabang BERT ensemble gagal: {e}") from e
         if (settings.ENSEMBLE_STRATEGY or "weighted") == "vote":
-            # OR-vote: utamakan recall alergen. Skor = max kedua probabilitas
-            # agar invarian "unsafe => confidence >= 0.5" tetap berlaku.
             unsafe = b_label == "unsafe" or t_label == "unsafe"
             score = max(b_score, t_score)
         else:
@@ -169,7 +155,6 @@ class DetectionPipeline:
             wt = float(settings.ENSEMBLE_WEIGHT_BERT)
             s = (wb + wt) or 1.0
             score = (wb * b_score + wt * t_score) / s
-            # Ambang ensemble fixed 0.5 sesuai kontrak (bukan threshold per-model).
             unsafe = score >= 0.5
         label = "unsafe" if unsafe else "safe"
         conf = score if unsafe else 1 - score
@@ -180,16 +165,11 @@ class DetectionPipeline:
         if not loaded or model is None or tokenizer is None:
             raise RuntimeError("Models not loaded")
 
-        # PARITY V5: tokenizer Keras menerima teks MENTAH persis seperti
-        # saat training. Jangan pre-clean (mis. preprocess_v5) sebelum ini
-        # — filter internal Keras + word_index sudah terkunci dan
-        # pembersihan ganda menggeser urutan token.
         raw = (text or "").strip()
         if not raw:
             raise ValueError("Teks kosong")
 
         pad_len = settings.MAX_LEN
-        # OOV guard: cap indeks >= vocab agar tidak IndexError.
         vocab = getattr(settings, "VOCAB_SIZE", 20000)
         seq = tokenizer.texts_to_sequences([text])
         if not seq or not seq[0]:
@@ -199,7 +179,6 @@ class DetectionPipeline:
             seq, maxlen=pad_len, padding="post", truncating="post"
         )
 
-        # FIX TOCTOU: pakai snapshot `model`, bukan properti registry.
         pred = model.predict(pad, verbose=0)
         raw = float(pred[0][0]) if pred.shape[-1] == 1 else None
 
@@ -239,8 +218,6 @@ class DetectionPipeline:
         bert_model.eval()
         with torch.no_grad():
             logits = bert_model(**enc).logits.detach().cpu().numpy().ravel()
-        # Kontrak BERT final: num_labels=2 + softmax, id unsafe dari config.
-        # (Kode lama asumsi 1 logit + sigmoid — salah untuk head 2 neuron.)
         if logits.size == 1:
             import math
             score = float(1 / (1 + math.exp(-float(logits[0]))))
@@ -267,7 +244,6 @@ class DetectionPipeline:
                 if not any(r.name == allergen_name for r in found):
                     found.append(AllergenResult(
                         name=allergen_name,
-                        # Propagasi keyakinan model alih-alih 1.0 hardcoded.
                         confidence=round(float(model_confidence), 3),
                         severity="high",
                     ))

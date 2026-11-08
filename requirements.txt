@@ -9,7 +9,6 @@ pandas==2.3.3
 opencv-python==4.11.0.86
 pillow==11.3.0
 pytesseract==0.3.13
-Sastrawi==1.0.1
 tensorflow==2.16.2
 gensim==4.3.3
 scikit-learn==1.5.1

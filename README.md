@@ -150,16 +150,6 @@ models/
     └── threshold.json
 ```
 
-## Docker
-
-```bash
-# Build image
-docker build -t budian-ml-service .
-
-# Jalankan container
-docker run -p 8000:8000 -e ML_API_KEY=your-key budian-ml-service
-```
-
 ## Interactive API Docs
 
 Swagger UI: http://localhost:8000/docs

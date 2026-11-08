@@ -38,7 +38,6 @@ ModelChoice = Literal["bilstm", "bert", "ensemble"]
 
 
 def _check_ready(registry: ModelRegistry, model: str) -> None:
-    # Early-return per model: BERT-only tidak boleh menuntut BiLSTM.
     if model == "bert":
         if not registry.is_ready("bert"):
             raise HTTPException(status_code=503, detail="Model BERT belum dimuat")
@@ -55,7 +54,6 @@ def _check_ready(registry: ModelRegistry, model: str) -> None:
 @router.post("/detection/upload", response_model=DetectionResponse)
 async def upload_image(
     file: UploadFile | None = File(default=None),
-    # Alias kompatibilitas: backend lama mengirim field 'image'.
     image: UploadFile | None = File(default=None),
     model: ModelChoice = Query(default="bert", description="Model: bilstm|bert|ensemble"),
     registry: ModelRegistry = Depends(get_model_registry),
@@ -77,7 +75,6 @@ async def upload_image(
     if len(image_bytes) > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=413, detail="File too large, max 10MB")
 
-    # Validasi magic-byte: pastikan benar-benar image (bukan sekadar content-type).
     try:
         import cv2
         import numpy as np

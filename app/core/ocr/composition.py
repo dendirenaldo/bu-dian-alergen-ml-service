@@ -68,11 +68,9 @@ class CompositionParser:
             if not started:
                 continue
 
-            # Stop if vertical gap is too large
             if prev_bottom is not None and (ln["top"] - prev_bottom) > max_gap:
                 break
 
-            # Prefer lines in same horizontal region as anchor
             horizontal_overlap = not (ln["right"] < anchor["left"] - 100 or ln["left"] > anchor["right"] + 900)
             near_anchor_column = abs(ln["left"] - anchor["left"]) <= 220
             if not (horizontal_overlap or near_anchor_column):

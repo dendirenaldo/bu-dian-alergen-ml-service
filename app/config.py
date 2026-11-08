@@ -16,12 +16,10 @@ class Settings(BaseSettings):
     TEST_SIZE: float = 0.2
     CSV_DELIMITER: str = ";"
     DEFAULT_THRESHOLD: float = 0.5
-    # --- BERT / ensemble (dual-model) ---
     BERT_MODEL_DIR: str = "./models/bert"
     BERT_MODEL_NAME: str = "indobenchmark/indobert-base-p1"
     BERT_MAX_LEN: int = 256
     BERT_THRESHOLD: float = 0.5
-    # 'bilstm' | 'bert' | 'ensemble' — default bert (akurasi holdout tertinggi).
     DEFAULT_MODEL: str = "bert"
     ENSEMBLE_STRATEGY: str = "weighted"  # 'weighted' | 'vote'
     ENSEMBLE_WEIGHT_BILSTM: float = 0.4
