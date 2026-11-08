@@ -1,4 +1,4 @@
-# Bu Dian ML Service
+# Allergen Detector ML Service
 
 API inferensi untuk deteksi alergen makanan menggunakan pipeline OCR + Word2Vec + BiLSTM + BERT (dual-model). Dibangun dengan FastAPI.
 
