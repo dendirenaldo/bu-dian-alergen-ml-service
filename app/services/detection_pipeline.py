@@ -62,6 +62,38 @@ class DetectionResult:
     model_name: str = "bert"
     model_version: str = ""
     scores: Optional[dict] = None
+    tahap_ms: Optional[dict] = None
+
+
+def result_to_dict(r: "DetectionResult") -> dict:
+    """Serialisasi DetectionResult untuk event SSE done / response."""
+    return {
+        "result": r.result,
+        "confidence_score": r.confidence_score,
+        "ocr_text": r.ocr_text,
+        "allergens": [
+            {"name": a.name, "confidence": a.confidence, "severity": a.severity}
+            for a in (r.allergens or [])
+        ],
+        "processing_time_ms": r.processing_time_ms,
+        "detection_method": r.detection_method,
+        "model_name": r.model_name,
+        "model_version": r.model_version,
+        "scores": r.scores,
+        "tahap_ms": r.tahap_ms or {},
+    }
+
+
+def _drain_stream(gen):
+    """Konsumsi generator tahap sampai return DetectionResult (PEP 380)."""
+    result = None
+    while True:
+        try:
+            next(gen)
+        except StopIteration as stop:
+            result = stop.value
+            break
+    return result
 
 
 class DetectionPipeline:
@@ -71,14 +103,34 @@ class DetectionPipeline:
         self.registry = registry
         self._preprocessor = TextPreprocessor()
 
-    def detect_from_image(
-        self, image_bytes: bytes, model: str = "bert"
-    ) -> DetectionResult:
-        start = time.time()
+    def _stage(self, stage: str, progress: int, message: str,
+                 data: Optional[dict] = None, tahap_ms: int = 0,
+                 eta_ms: Optional[int] = None) -> dict:
+        """Bentuk event tahap SSE {stage, progress, message, etaMs?, data?}."""
+        event: dict = {"stage": stage, "progress": progress, "message": message}
+        if eta_ms is not None:
+            event["etaMs"] = eta_ms
+        payload = dict(data or {})
+        payload["tahap_ms"] = int(tahap_ms)
+        event["data"] = payload
+        return event
 
+    def detect_from_image_stream(self, image_bytes: bytes, model: str = "bert"):
+        """Generator tahap image: preprocess 30 → ocr 55 → classify 80 → mapping 90.
+
+        Me-return DetectionResult (StopIteration.value) setelah yield terakhir.
+        Tiap event membawa tahap_ms tahap tsb + elapsed_ms kumulatif.
+        """
+        t0 = time.time()
+
+        s = time.time()
         img_prep = ImagePreprocessor()
         processed_img = img_prep.preprocess_from_bytes(image_bytes)
+        ms_pre = int((time.time() - s) * 1000)
+        yield self._stage("preprocess", 30, "Preprocessing gambar selesai",
+                          {"elapsed_ms": int((time.time() - t0) * 1000)}, ms_pre, 9000)
 
+        s = time.time()
         ocr = OCREngine(lang=settings.TESSERACT_LANG, min_conf=settings.OCR_MIN_CONF)
         lines = ocr.extract_lines(processed_img)
 
@@ -87,11 +139,31 @@ class DetectionPipeline:
 
         if not composition:
             composition = ocr.extract_text(processed_img)
+        ms_ocr = int((time.time() - s) * 1000)
+        line_count = len(lines or [])
+        if line_count == 0 and composition:
+            line_count = len([ln for ln in composition.splitlines() if ln.strip()])
+        yield self._stage("ocr", 55, f"OCR selesai ({line_count} baris)",
+                          {"lines": line_count,
+                           "elapsed_ms": int((time.time() - t0) * 1000)}, ms_ocr, 6000)
 
+        s = time.time()
         result, confidence, scores, used_model = self._classify_text(composition, model)
-        allergens = self._identify_allergens(composition, confidence)
+        ms_cls = int((time.time() - s) * 1000)
+        yield self._stage("classify", 80, f"Klasifikasi selesai (backend {used_model})",
+                          {"backend": used_model, "model": used_model,
+                           "elapsed_ms": int((time.time() - t0) * 1000)}, ms_cls, 3000)
 
-        elapsed = int((time.time() - start) * 1000)
+        s = time.time()
+        allergens = self._identify_allergens(composition, confidence)
+        ms_map = int((time.time() - s) * 1000)
+        yield self._stage("mapping", 90, f"Pemetaan alergen selesai ({len(allergens)})",
+                          {"count": len(allergens),
+                           "elapsed_ms": int((time.time() - t0) * 1000)}, ms_map, 1000)
+
+        elapsed = int((time.time() - t0) * 1000)
+        tahap = {"preprocess": ms_pre, "ocr": ms_ocr,
+                 "classify": ms_cls, "mapping": ms_map}
 
         return DetectionResult(
             result=result,
@@ -102,17 +174,36 @@ class DetectionPipeline:
             detection_method="image_ocr" if used_model == "bilstm" else f"image_ocr_{used_model}",
             model_name=used_model,
             scores=scores,
+            tahap_ms=tahap,
         )
 
-    def detect_from_text(
-        self, text: str, model: str = "bert"
-    ) -> DetectionResult:
-        start = time.time()
+    def detect_from_text_stream(self, text: str, model: str = "bert"):
+        """Generator tahap text: preprocess 30 → classify 80 → mapping 90."""
+        t0 = time.time()
 
+        s = time.time()
+        cleaned = (text or "").strip()
+        ms_pre = int((time.time() - s) * 1000)
+        yield self._stage("preprocess", 30, "Preprocessing teks selesai",
+                          {"elapsed_ms": int((time.time() - t0) * 1000)}, ms_pre, 5000)
+
+        s = time.time()
         result, confidence, scores, used_model = self._classify_text(text, model)
-        allergens = self._identify_allergens(text, confidence)
+        ms_cls = int((time.time() - s) * 1000)
+        yield self._stage("classify", 80, f"Klasifikasi selesai (backend {used_model})",
+                          {"backend": used_model, "model": used_model,
+                           "elapsed_ms": int((time.time() - t0) * 1000)}, ms_cls, 3000)
 
-        elapsed = int((time.time() - start) * 1000)
+        s = time.time()
+        allergens = self._identify_allergens(cleaned, confidence)
+        ms_map = int((time.time() - s) * 1000)
+        yield self._stage("mapping", 90, f"Pemetaan alergen selesai ({len(allergens)})",
+                          {"count": len(allergens),
+                           "elapsed_ms": int((time.time() - t0) * 1000)}, ms_map, 1000)
+
+        elapsed = int((time.time() - t0) * 1000)
+        tahap = {"preprocess": ms_pre, "ocr": 0,
+                 "classify": ms_cls, "mapping": ms_map}
 
         return DetectionResult(
             result=result,
@@ -123,7 +214,20 @@ class DetectionPipeline:
             detection_method="text_input" if used_model == "bilstm" else f"text_input_{used_model}",
             model_name=used_model,
             scores=scores,
+            tahap_ms=tahap,
         )
+
+    def detect_from_image(
+        self, image_bytes: bytes, model: str = "bert"
+    ) -> DetectionResult:
+        """Wrapper sync untuk POST lama (menguras generator tahap)."""
+        return _drain_stream(self.detect_from_image_stream(image_bytes, model=model))
+
+    def detect_from_text(
+        self, text: str, model: str = "bert"
+    ) -> DetectionResult:
+        """Wrapper sync untuk POST lama (menguras generator tahap)."""
+        return _drain_stream(self.detect_from_text_stream(text, model=model))
 
     def _classify_text(self, text: str, model: str = "bert") -> "tuple[str, float, dict, str]":
         model = (model or "bert").lower()

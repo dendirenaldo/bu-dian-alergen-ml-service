@@ -23,3 +23,4 @@ class DetectionResponse(BaseModel):
     model_name: str = "bert"
     model_version: str = ""
     scores: Optional[dict] = None
+    tahap_ms: Optional[dict] = None
