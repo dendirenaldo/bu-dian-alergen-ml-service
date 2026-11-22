@@ -69,6 +69,7 @@ class ModelRegistry:
                 cls._instance._bert_tokenizer = None
                 cls._instance._bert_threshold: float = 0.5
                 cls._instance._bert_model_name: str = ""
+                cls._instance._bert_max_len: int | None = None
             return cls._instance
 
     def reset(self) -> None:
@@ -85,6 +86,7 @@ class ModelRegistry:
             self._bert_tokenizer = None
             self._bert_threshold = 0.5
             self._bert_model_name = ""
+            self._bert_max_len = None
 
     def load_models(self, model_dir: str) -> None:
         """Load all models from disk.
@@ -102,6 +104,7 @@ class ModelRegistry:
         self._label_encoder = None
         self._thresholds = {}
         self._metadata = {}
+        self._bert_max_len = None
         try:
             model_path = os.path.join(model_dir, "bilstm_model.keras")
             w2v_path = os.path.join(model_dir, "word2vec.model")
@@ -226,7 +229,11 @@ class ModelRegistry:
             if os.path.exists(meta_file):
                 try:
                     with open(meta_file, encoding="utf-8") as f:
-                        name = json.load(f).get("model_name", name)
+                        payload = json.load(f)
+                    name = payload.get("model_name", name)
+                    max_len = payload.get("max_len")
+                    if max_len:
+                        self._bert_max_len = int(max_len)
                 except Exception:
                     pass
             self._bert_model_name = name or bert_dir
@@ -260,6 +267,11 @@ class ModelRegistry:
         with self._lock:
             return (self._bert_model, self._bert_tokenizer,
                     self._bert_threshold, self._bert_model_name)
+
+    @property
+    def bert_max_len(self) -> int | None:
+        with self._lock:
+            return self._bert_max_len
 
     def get_threshold(self, model_name: str = "bert", default: float = 0.5) -> float:
         """Threshold per model dari thresholds.json (fallback default)."""

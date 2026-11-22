@@ -273,8 +273,11 @@ class DetectionPipeline:
         if not raw:
             raise ValueError("Teks kosong")
 
-        pad_len = settings.MAX_LEN
-        vocab = getattr(settings, "VOCAB_SIZE", 20000)
+        # Utamakan metadata artefak training agar serving tidak drift saat HPO
+        # memilih max_len / vocab_size yang berbeda dari default lama.
+        metadata = self.registry.metadata or {}
+        pad_len = int(metadata.get("max_len", getattr(tokenizer, "max_len", settings.MAX_LEN)))
+        vocab = int(metadata.get("vocab_size", getattr(tokenizer, "vocab_size", getattr(settings, "VOCAB_SIZE", 20000))))
         seq = tokenizer.texts_to_sequences([text])
         if not seq or not seq[0]:
             raise ValueError("Teks kosong setelah tokenisasi")
@@ -314,9 +317,10 @@ class DetectionPipeline:
             import torch
         except ImportError as e:
             raise RuntimeError("torch belum terinstal untuk inferensi BERT") from e
+        bert_max_len = self.registry.bert_max_len or getattr(settings, "BERT_MAX_LEN", 256)
         enc = bert_tok(
             cleaned, truncation=True, padding=True,
-            max_length=getattr(settings, "BERT_MAX_LEN", 256),
+            max_length=int(bert_max_len),
             return_tensors="pt",
         )
         bert_model.eval()
