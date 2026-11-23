@@ -3,7 +3,7 @@ import logging
 import os
 import pickle
 import threading
-from typing import Any, Optional
+from typing import Optional
 
 from gensim.models import Word2Vec
 from tensorflow.keras.models import load_model
@@ -203,7 +203,14 @@ class ModelRegistry:
         if not (os.path.exists(os.path.join(bert_dir, "config.json"))):
             return False
         try:
-            import torch  # noqa: F401
+            import importlib.util
+
+            missing = [
+                name for name in ("torch", "transformers")
+                if importlib.util.find_spec(name) is None
+            ]
+            if missing:
+                raise ImportError(", ".join(missing) + " belum terinstal")
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
         except ImportError as e:
             logger.warning("transformers/torch belum terinstal, BERT dilewati: %s", e)

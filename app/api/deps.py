@@ -1,4 +1,4 @@
-from fastapi import Depends, Header, HTTPException
+from fastapi import Header, HTTPException
 
 from app.config import settings
 from app.services.model_registry import ModelRegistry

@@ -1,5 +1,3 @@
-from typing import Optional
-
 import tensorflow as tf
 from tensorflow.keras.constraints import MaxNorm
 from tensorflow.keras.layers import (
